@@ -36,7 +36,7 @@ The SDK uses the Android OAuth flow, stores refreshable sessions locally, and ex
 - Android OAuth login with refreshable sessions
 - File-backed session cache under `.sessions/`
 - Native `fetch`, ESM, strict TypeScript
-- Message listing across mailbox folders with `mail.listIncoming()`
+- Message listing across mailbox folders with `mail.listIncoming()` / `mail.listAll()`
 - Folder listing, creation, renaming, moving, expiry, and deletion
 - Header search, body previews, and full body fetches
 - Fetching the full body marks a message as read by default
@@ -136,37 +136,11 @@ const results = await client.mail.search("sender@example.com", {
 });
 ```
 
-`mail.search()` matches headers and excludes `TRASH`, `DRAFTS`, and `OUTBOX` by default. Spam and custom folders are included. To skip Spam, pass:
-
-```ts
-const results = await client.mail.search("sender@example.com", {
-  amount: 25,
-  excludeFolderTypeOrId: ["SPAM", "TRASH", "DRAFTS", "OUTBOX"],
-});
-```
+`mail.search()` matches headers and excludes `TRASH`, `DRAFTS`, and `OUTBOX` by default. Spam and custom folders are included.
 
 `mail.listIncoming()` scans all folders except `TRASH`, `DRAFTS`, and `OUTBOX` by default, including custom folders created by filters.
 
-### Extract a Code from a Message
-
-```ts
-const incoming = await client.mail.listIncoming({
-  amount: 25,
-  includeSpam: true,
-});
-
-const match = incoming.mail.find((message) => {
-  const from = message.mailHeader?.from ?? "";
-  const subject = message.mailHeader?.subject ?? "";
-  return from.includes("sender@example.com") && subject.includes("code");
-});
-
-if (match?.attribute?.mailIdentifier) {
-  const body = await client.mail.getBody(match.attribute.mailIdentifier);
-  const code = body.match(/\b\d{6}\b/)?.[0];
-  console.log(code);
-}
-```
+Use `NO_SPAM_EXCLUDED_FOLDERS`, `mail.listAll()`, `mail.findBySubject()`, and `mail.findBySender()` for common read patterns. Full recipes live in [GUIDE.md](./GUIDE.md).
 
 ---
 
@@ -175,7 +149,7 @@ if (match?.attribute?.mailIdentifier) {
 | Group         | Methods                                                                                                                               |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `auth`        | `login`, `refresh`, `validateToken`, `logout`                                                                                         |
-| `mail`        | `search`, `listByFolder`, `listIncoming`, `syncFolder`, `getBody`, `getPreview`, `send`, `reply`, `forward`                           |
+| `mail`        | `search`, `listByFolder`, `listIncoming`, `listAll`, `findBySubject`, `findBySender`, `syncFolder`, `getBody`, `getPreview`, `send`, `reply`, `forward` |
 | `drafts`      | `list`, `create`, `update`, `delete`                                                                                                  |
 | `folders`     | `list`, `create`, `rename`, `move`, `setExpireDays`, `delete`                                                                         |
 | `actions`     | `markRead`, `markUnread`, `star`, `unstar`, `markSpam`, `markNotSpam`, `moveToFolder`, `moveToTrash`, `deletePermanent`, `emptyTrash` |
