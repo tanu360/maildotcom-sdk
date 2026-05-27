@@ -26,6 +26,9 @@ export const FULL_ACCESS_SCOPE =
 
 export const MAX_TOTAL_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
+export const DEFAULT_EXCLUDED_FOLDERS = ["TRASH", "DRAFTS", "OUTBOX"] as const;
+export const NO_SPAM_EXCLUDED_FOLDERS = ["SPAM", ...DEFAULT_EXCLUDED_FOLDERS] as const;
+
 export const MIME = {
   folder: "application/vnd.ui.trinity.folder-v2+json",
   folderCreate: "application/vnd.ui.trinity.folder.create+json; charset=utf-8",

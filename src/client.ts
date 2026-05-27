@@ -4,6 +4,7 @@ import {
   ANDROID_REDIRECT_URI,
   APP_HEADERS,
   DEFAULT_ANDROID_OAUTH_BASIC_AUTH,
+  DEFAULT_EXCLUDED_FOLDERS,
   FULL_ACCESS_SCOPE,
   HSP2_BASE_URL,
   MAX_TOTAL_ATTACHMENT_BYTES,
@@ -72,9 +73,6 @@ type MinimalMailPayload = {
   }>;
 };
 
-const DEFAULT_SEARCH_EXCLUDED_FOLDER_TYPE_OR_ID = ["TRASH", "DRAFTS", "OUTBOX"];
-const DEFAULT_LIST_INCOMING_EXCLUDED_FOLDER_TYPE_OR_ID = ["TRASH", "DRAFTS", "OUTBOX"];
-
 export class MailComClient {
   readonly auth: {
     login: () => Promise<TokenSession>;
@@ -96,6 +94,9 @@ export class MailComClient {
     search: (query: string, options?: SearchMailOptions) => Promise<MessagesResponse>;
     listByFolder: (folderId: string, options?: ListMailOptions) => Promise<ListMailResponse>;
     listIncoming: (options?: ListIncomingOptions) => Promise<ListIncomingResponse>;
+    listAll: (options?: ListIncomingOptions) => Promise<ListIncomingResponse>;
+    findBySubject: (subject: string, options?: SearchMailOptions) => Promise<MailMessage[]>;
+    findBySender: (sender: string, options?: SearchMailOptions) => Promise<MailMessage[]>;
     syncFolder: (folderId: string, options?: SyncFolderOptions) => Promise<UriListResponse>;
     getBody: (mailId: string, options?: { format?: "html" | "text"; markRead?: boolean }) => Promise<string>;
     getPreview: (mailIds: string | string[]) => Promise<MailPreview[]>;
@@ -180,6 +181,9 @@ export class MailComClient {
       search: (query, options) => this.search(query, options),
       listByFolder: (folderId, options) => this.listByFolder(folderId, options),
       listIncoming: (options) => this.listIncoming(options),
+      listAll: (options) => this.listIncoming(options),
+      findBySubject: (subject, options) => this.findBySubject(subject, options),
+      findBySender: (sender, options) => this.findBySender(sender, options),
       syncFolder: (folderId, options) => this.syncFolder(folderId, options),
       getBody: (mailId, options) => this.getBody(mailId, options),
       getPreview: (mailIds) => this.getPreview(mailIds),
@@ -365,7 +369,7 @@ export class MailComClient {
     await this.ensureLoggedIn();
     const body = {
       amount: options.amount ?? 25,
-      excludeFolderTypeOrId: options.excludeFolderTypeOrId ?? DEFAULT_SEARCH_EXCLUDED_FOLDER_TYPE_OR_ID,
+      excludeFolderTypeOrId: options.excludeFolderTypeOrId ?? DEFAULT_EXCLUDED_FOLDERS,
       include: [{ conditions: [`mail.header:from,replyTo,cc,bcc,to,subject:${query}`] }],
       orderBy: options.orderBy ?? "INTERNALDATE desc",
       preferAbsoluteURIs: false,
@@ -380,6 +384,18 @@ export class MailComClient {
       },
       json: body,
     });
+  }
+
+  private async findBySubject(subject: string, options?: SearchMailOptions): Promise<MailMessage[]> {
+    const response = await this.search(subject, options);
+    const needle = subject.toLowerCase();
+    return (response.mail ?? []).filter((message) => (message.mailHeader?.subject ?? "").toLowerCase().includes(needle));
+  }
+
+  private async findBySender(sender: string, options?: SearchMailOptions): Promise<MailMessage[]> {
+    const response = await this.search(sender, options);
+    const needle = sender.toLowerCase();
+    return (response.mail ?? []).filter((message) => (message.mailHeader?.from ?? "").toLowerCase().includes(needle));
   }
 
   private async listByFolder(folderId: string, options: ListMailOptions = {}): Promise<ListMailResponse> {
@@ -407,7 +423,7 @@ export class MailComClient {
 
   private async listIncoming(options: ListIncomingOptions = {}): Promise<ListIncomingResponse> {
     const excludedFolderTypeOrId = new Set(
-      (options.excludeFolderTypeOrId ?? DEFAULT_LIST_INCOMING_EXCLUDED_FOLDER_TYPE_OR_ID).map((value) => value.toUpperCase()),
+      (options.excludeFolderTypeOrId ?? DEFAULT_EXCLUDED_FOLDERS).map((value) => value.toUpperCase()),
     );
     if (options.includeSpam === false) excludedFolderTypeOrId.add("SPAM");
 

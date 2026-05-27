@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { MailComClient, MemorySessionStore, type TokenSession } from "../src/index.js";
+import {
+  DEFAULT_EXCLUDED_FOLDERS,
+  MailComClient,
+  MemorySessionStore,
+  NO_SPAM_EXCLUDED_FOLDERS,
+  type TokenSession,
+} from "../src/index.js";
 
 type RecordedRequest = {
   url: string;
@@ -207,10 +213,61 @@ test("search includes spam by default and lets callers exclude it", async () => 
   });
 
   const defaultPayload = JSON.parse(requests[1]?.body ?? "{}") as { excludeFolderTypeOrId: string[] };
-  assert.deepEqual(defaultPayload.excludeFolderTypeOrId, ["TRASH", "DRAFTS", "OUTBOX"]);
+  assert.deepEqual(defaultPayload.excludeFolderTypeOrId, DEFAULT_EXCLUDED_FOLDERS);
 
   const explicitPayload = JSON.parse(requests[2]?.body ?? "{}") as { excludeFolderTypeOrId: string[] };
-  assert.deepEqual(explicitPayload.excludeFolderTypeOrId, ["SPAM", "TRASH", "DRAFTS", "OUTBOX"]);
+  assert.deepEqual(explicitPayload.excludeFolderTypeOrId, NO_SPAM_EXCLUDED_FOLDERS);
+});
+
+test("mail convenience aliases reuse confirmed list and search behavior", async () => {
+  const store = new MemorySessionStore();
+  await store.save("user@mail.com", {
+    accessToken: "access",
+    refreshToken: "refresh",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+
+  const { fetch, requests } = mockFetch([
+    new Response(null, { status: 200 }),
+    jsonResponse({
+      folders: [
+        { folderIdentifier: "inbox-id", attribute: { folderType: "INBOX", folderName: "Inbox" } },
+      ],
+    }),
+    jsonResponse({ mail: [], totalCount: 0, unreadCount: 0 }),
+    jsonResponse({
+      mail: [
+        { mailURI: "../../Mail/subject-match", mailHeader: { subject: "Invoice ready", from: "billing@example.com" } },
+        { mailURI: "../../Mail/subject-miss", mailHeader: { subject: "Other", from: "invoice@example.com" } },
+      ],
+    }),
+    jsonResponse({
+      mail: [
+        { mailURI: "../../Mail/sender-match", mailHeader: { subject: "Hello", from: "Billing Team <billing@example.com>" } },
+        { mailURI: "../../Mail/sender-miss", mailHeader: { subject: "billing@example.com", from: "other@example.com" } },
+      ],
+    }),
+  ]);
+
+  const client = new MailComClient({
+    email: "user@mail.com",
+    sessionStore: store,
+    fetch,
+  });
+
+  await client.login();
+  const listed = await client.mail.listAll({ amount: 5 });
+  const subjectMatches = await client.mail.findBySubject("Invoice");
+  const senderMatches = await client.mail.findBySender("billing@example.com");
+
+  assert.equal(listed.totalCount, 0);
+  assert.deepEqual(subjectMatches.map((message) => message.mailURI), ["../../Mail/subject-match"]);
+  assert.deepEqual(senderMatches.map((message) => message.mailURI), ["../../Mail/sender-match"]);
+
+  assert.match(requests[2]?.url ?? "", /\/Folder\/inbox-id\/Mail\?absoluteURI=false&orderBy=INTERNALDATE\+desc&amount=5&tagsShowAll=true$/);
+  assert.match(requests[3]?.body ?? "", /mail\.header:from,replyTo,cc,bcc,to,subject:Invoice/);
+  assert.match(requests[4]?.body ?? "", /mail\.header:from,replyTo,cc,bcc,to,subject:billing@example\.com/);
 });
 
 test("authorized requests refresh once on 401 and retry", async () => {

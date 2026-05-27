@@ -7,6 +7,8 @@ All notable changes to this package are documented here.
 - Added broad message discovery defaults for `mail.search()` and `mail.listIncoming()`.
 - Included Spam and custom folders by default while keeping `TRASH`, `DRAFTS`, and `OUTBOX` excluded.
 - Added explicit Spam exclusion examples with `excludeFolderTypeOrId` and `includeSpam`.
+- Added `mail.listAll()`, `mail.findBySubject()`, and `mail.findBySender()` convenience helpers.
+- Exported `DEFAULT_EXCLUDED_FOLDERS` and `NO_SPAM_EXCLUDED_FOLDERS` typed constants.
 - Added GitHub Actions CI for install, test, and package dry-run checks.
 
 ## 1.0.0 - 2026-05-27

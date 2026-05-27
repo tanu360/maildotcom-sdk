@@ -202,7 +202,7 @@ export interface ListIncomingOptions {
   orderBy?: string;
   condition?: string;
   tagsShowAll?: boolean;
-  excludeFolderTypeOrId?: string[];
+  excludeFolderTypeOrId?: readonly string[];
   includeSpam?: boolean;
 }
 
@@ -221,7 +221,7 @@ export interface SyncFolderOptions {
 
 export interface SearchMailOptions {
   amount?: number;
-  excludeFolderTypeOrId?: string[];
+  excludeFolderTypeOrId?: readonly string[];
   orderBy?: string;
 }
 
