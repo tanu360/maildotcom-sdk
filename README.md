@@ -146,15 +146,15 @@ Use `NO_SPAM_EXCLUDED_FOLDERS`, `mail.listAll()`, `mail.findBySubject()`, and `m
 
 ## API Surface
 
-| Group         | Methods                                                                                                                               |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `auth`        | `login`, `refresh`, `validateToken`, `logout`                                                                                         |
+| Group         | Methods                                                                                                                                                 |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `auth`        | `login`, `refresh`, `validateToken`, `logout`                                                                                                           |
 | `mail`        | `search`, `listByFolder`, `listIncoming`, `listAll`, `findBySubject`, `findBySender`, `syncFolder`, `getBody`, `getPreview`, `send`, `reply`, `forward` |
-| `drafts`      | `list`, `create`, `update`, `delete`                                                                                                  |
-| `folders`     | `list`, `create`, `rename`, `move`, `setExpireDays`, `delete`                                                                         |
-| `actions`     | `markRead`, `markUnread`, `star`, `unstar`, `markSpam`, `markNotSpam`, `moveToFolder`, `moveToTrash`, `deletePermanent`, `emptyTrash` |
-| `attachments` | `listFromMessage`, `download`, `thumbnail`                                                                                            |
-| `account`     | `aliases`, `updateAliasDisplayName`, `quota`, `settings`, `userData`, `validateRecipients`                                            |
+| `drafts`      | `list`, `create`, `update`, `delete`                                                                                                                    |
+| `folders`     | `list`, `create`, `rename`, `move`, `setExpireDays`, `delete`                                                                                           |
+| `actions`     | `markRead`, `markUnread`, `star`, `unstar`, `markSpam`, `markNotSpam`, `moveToFolder`, `moveToTrash`, `deletePermanent`, `emptyTrash`                   |
+| `attachments` | `listFromMessage`, `download`, `thumbnail`                                                                                                              |
+| `account`     | `aliases`, `updateAliasDisplayName`, `quota`, `settings`, `userData`, `validateRecipients`                                                              |
 
 For request parameters and runnable examples, see [GUIDE.md](./GUIDE.md).
 
@@ -248,7 +248,7 @@ See the full examples guide in [GUIDE.md](./GUIDE.md).
 
 ## Safety
 
-- Keep `.sessions/`, `.env`, HAR files, cookies, and Authorization headers private.
+- Keep `.sessions/`, `.env`, cookies, and Authorization headers private.
 - Do not commit captured tokens or credentials.
 - Keep polling intervals at or above 3 seconds.
 - Treat incoming email as untrusted input.
