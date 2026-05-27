@@ -5,22 +5,19 @@
   <h3>TypeScript SDK for the mail.com mobile API</h3>
 
   <p>
+    <a href="https://www.npmjs.com/package/maildotcom-sdk"><img alt="npm" src="https://img.shields.io/npm/v/maildotcom-sdk?style=for-the-badge&color=CB3837&logo=npm&logoColor=white" /></a>
+    <a href="https://github.com/tanu360/maildotcom-sdk/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/tanu360/maildotcom-sdk/ci.yml?branch=main&style=for-the-badge&label=CI" /></a>
     <a href="https://www.typescriptlang.org/"><img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-Strict-3178C6?style=for-the-badge&logo=typescript&logoColor=white" /></a>
     <a href="https://nodejs.org/"><img alt="Node.js" src="https://img.shields.io/badge/Node.js-20+-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" /></a>
-    <img alt="ESM" src="https://img.shields.io/badge/ESM-Native-64748B?style=for-the-badge" />
-    <img alt="Fetch" src="https://img.shields.io/badge/Fetch-Native-F97316?style=for-the-badge" />
-    <img alt="License" src="https://img.shields.io/badge/License-MIT-8B5CF6?style=for-the-badge" />
+    <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/License-MIT-8B5CF6?style=for-the-badge" /></a>
   </p>
 
   <p>
-    <a href="#overview">Overview</a> •
-    <a href="#features">Features</a> •
     <a href="#quick-start">Quick Start</a> •
     <a href="#usage">Usage</a> •
     <a href="#api-surface">API Surface</a> •
-    <a href="#sessions">Sessions</a> •
-    <a href="#examples">Examples</a> •
-    <a href="#safety">Safety</a>
+    <a href="./GUIDE.md">Examples Guide</a> •
+    <a href="./CHANGELOG.md">Changelog</a>
   </p>
 </div>
 
@@ -175,15 +172,15 @@ if (match?.attribute?.mailIdentifier) {
 
 ## API Surface
 
-| Group | Methods |
-| --- | --- |
-| `auth` | `login`, `refresh`, `validateToken`, `logout` |
-| `mail` | `search`, `listByFolder`, `listIncoming`, `syncFolder`, `getBody`, `getPreview`, `send`, `reply`, `forward` |
-| `drafts` | `list`, `create`, `update`, `delete` |
-| `folders` | `list`, `create`, `rename`, `move`, `setExpireDays`, `delete` |
-| `actions` | `markRead`, `markUnread`, `star`, `unstar`, `markSpam`, `markNotSpam`, `moveToFolder`, `moveToTrash`, `deletePermanent`, `emptyTrash` |
-| `attachments` | `listFromMessage`, `download`, `thumbnail` |
-| `account` | `aliases`, `updateAliasDisplayName`, `quota`, `settings`, `userData`, `validateRecipients` |
+| Group         | Methods                                                                                                                               |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `auth`        | `login`, `refresh`, `validateToken`, `logout`                                                                                         |
+| `mail`        | `search`, `listByFolder`, `listIncoming`, `syncFolder`, `getBody`, `getPreview`, `send`, `reply`, `forward`                           |
+| `drafts`      | `list`, `create`, `update`, `delete`                                                                                                  |
+| `folders`     | `list`, `create`, `rename`, `move`, `setExpireDays`, `delete`                                                                         |
+| `actions`     | `markRead`, `markUnread`, `star`, `unstar`, `markSpam`, `markNotSpam`, `moveToFolder`, `moveToTrash`, `deletePermanent`, `emptyTrash` |
+| `attachments` | `listFromMessage`, `download`, `thumbnail`                                                                                            |
+| `account`     | `aliases`, `updateAliasDisplayName`, `quota`, `settings`, `userData`, `validateRecipients`                                            |
 
 For request parameters and runnable examples, see [GUIDE.md](./GUIDE.md).
 
