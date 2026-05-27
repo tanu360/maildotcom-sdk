@@ -2,7 +2,7 @@
 
   <h1>maildotcom-sdk Examples Guide</h1>
 
-  <h3>Runnable examples for auth, message reading, sending, folders, drafts, attachments, aliases, and code extraction</h3>
+  <h3>Runnable examples for auth, message reading, sending, folders, drafts, attachments, aliases, and message code extraction</h3>
 
   <p>
     <a href="https://www.typescriptlang.org/"><img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-Strict-3178C6?style=for-the-badge&logo=typescript&logoColor=white" /></a>
@@ -107,6 +107,10 @@ node dist/examples/12-message-code.js
 | `MAILCOM_HTML_BODY` | No | Send, reply, forward, drafts | HTML body |
 | `MAILCOM_ATTACHMENTS` | No | Send, attachments | Comma-separated local file paths |
 | `MAILCOM_ATTACHMENT_CONTENT_TYPES` | No | Send, attachments | Comma-separated content types matching `MAILCOM_ATTACHMENTS` |
+| `MAILCOM_SEARCH` | No | Message reading | Header search query |
+| `MAILCOM_SEARCH_EXCLUDE_SPAM` | No | Message reading | Set `true` to use `NO_SPAM_EXCLUDED_FOLDERS` |
+| `MAILCOM_FIND_SUBJECT` | No | Message reading | Run `mail.findBySubject()` |
+| `MAILCOM_FIND_SENDER` | No | Message reading | Run `mail.findBySender()` |
 
 ### Safe-by-Default Behavior
 
@@ -131,7 +135,7 @@ Destructive examples require explicit confirmation variables such as `MAILCOM_CO
 | [`00-auth-and-session.ts`](./examples/00-auth-and-session.ts) | Auth | Login, cached session load, token validation, refresh, logout |
 | [`01-account-and-aliases.ts`](./examples/01-account-and-aliases.ts) | Account | User data, quota, settings, aliases, recipient validation, alias display name update |
 | [`02-folders.ts`](./examples/02-folders.ts) | Folders | List, create, rename, move, set expiry, delete |
-| [`03-mail-read.ts`](./examples/03-mail-read.ts) | Message reading | Scan messages across non-excluded folders, list folders, sync changes, search headers, preview bodies, fetch full bodies |
+| [`03-mail-read.ts`](./examples/03-mail-read.ts) | Message reading | Scan messages across non-excluded folders, list folders, sync changes, search headers, find by subject/sender, preview bodies, fetch full bodies |
 | [`04-send-mail.ts`](./examples/04-send-mail.ts) | Sending | Rich HTML email, sender display name, attachments, priority, read receipt request |
 | [`05-reply-forward.ts`](./examples/05-reply-forward.ts) | Reply/forward | Reply to an original message, forward an original message |
 | [`06-drafts.ts`](./examples/06-drafts.ts) | Drafts | List, create, update, delete drafts |
@@ -204,6 +208,17 @@ await client.mail.listIncoming({
 ```
 
 ```ts
+await client.mail.listAll({
+  amount,
+  orderBy,
+  condition,
+  tagsShowAll,
+  excludeFolderTypeOrId,
+  includeSpam,
+});
+```
+
+```ts
 await client.mail.listByFolder(folderId, {
   amount,
   orderBy,
@@ -226,6 +241,9 @@ await client.mail.syncFolder(folderId, {
 | `mail.search(query, options)` | `amount`, `excludeFolderTypeOrId`, `orderBy` |
 | `mail.listByFolder(folderId, options)` | `amount`, `orderBy`, `condition`, `tagsShowAll`, `format` |
 | `mail.listIncoming(options)` | `amount`, `orderBy`, `condition`, `tagsShowAll`, `excludeFolderTypeOrId`, `includeSpam` |
+| `mail.listAll(options)` | alias for `mail.listIncoming(options)` |
+| `mail.findBySubject(subject, options)` | `amount`, `excludeFolderTypeOrId`, `orderBy` |
+| `mail.findBySender(sender, options)` | `amount`, `excludeFolderTypeOrId`, `orderBy` |
 | `mail.syncFolder(folderId, options)` | `after`, `condition`, `orderBy` |
 | `mail.getBody(mailId, options)` | `format`, `markRead` |
 | `mail.getPreview(mailIds)` | `mailId` or `mailId[]` |
@@ -233,13 +251,23 @@ await client.mail.syncFolder(folderId, {
 `mail.search()` searches message headers and excludes `TRASH`, `DRAFTS`, and `OUTBOX` by default. Spam and custom folders are included. To skip Spam, pass:
 
 ```ts
+import { NO_SPAM_EXCLUDED_FOLDERS } from "maildotcom-sdk";
+
 await client.mail.search("sender@example.com", {
   amount: 25,
-  excludeFolderTypeOrId: ["SPAM", "TRASH", "DRAFTS", "OUTBOX"],
+  excludeFolderTypeOrId: NO_SPAM_EXCLUDED_FOLDERS,
 });
 ```
 
-`mail.listIncoming()` scans messages in all folders except `TRASH`, `DRAFTS`, and `OUTBOX` by default, so custom filtered folders are included. To skip extra folders, pass `excludeFolderTypeOrId`, for example `["TRASH", "DRAFTS", "OUTBOX", "SENT"]`.
+`mail.listIncoming()` and `mail.listAll()` scan messages in all folders except `TRASH`, `DRAFTS`, and `OUTBOX` by default, so custom filtered folders are included. To skip extra folders, pass `excludeFolderTypeOrId`.
+
+The SDK exports typed folder exclusion presets:
+
+```ts
+import { DEFAULT_EXCLUDED_FOLDERS, NO_SPAM_EXCLUDED_FOLDERS } from "maildotcom-sdk";
+```
+
+`mail.findBySubject()` and `mail.findBySender()` use the confirmed header search endpoint, then filter returned messages locally by subject or sender.
 
 ### Sending Emails
 
@@ -414,6 +442,61 @@ MAILCOM_EMAIL="you@mail.com" \
 MAILCOM_ORIGINAL_MAIL_ID="message-id-placeholder" \
 MAILCOM_TO="recipient@example.com" \
 node dist/examples/05-reply-forward.js
+```
+
+</details>
+
+<details>
+  <summary>Common message patterns</summary>
+
+Search all mail headers with the default exclusions:
+
+```ts
+await client.mail.search("billing@example.com");
+```
+
+Search while excluding Spam:
+
+```ts
+import { NO_SPAM_EXCLUDED_FOLDERS } from "maildotcom-sdk";
+
+await client.mail.search("billing@example.com", {
+  excludeFolderTypeOrId: NO_SPAM_EXCLUDED_FOLDERS,
+});
+```
+
+Scan folders and read a body:
+
+```ts
+const incoming = await client.mail.listAll({ amount: 25 });
+const first = incoming.mail[0];
+
+if (first?.attribute?.mailIdentifier) {
+  const html = await client.mail.getBody(first.attribute.mailIdentifier);
+  console.log(html);
+}
+```
+
+Send with an attachment:
+
+```ts
+import { readFile } from "node:fs/promises";
+
+const data = await readFile("./invoice.pdf");
+
+await client.mail.send({
+  from: "Display Name <you@mail.com>",
+  to: "recipient@example.com",
+  subject: "Invoice",
+  htmlBody: "<html><body>Please see attached.</body></html>",
+  attachments: [
+    {
+      filename: "invoice.pdf",
+      contentType: "application/pdf",
+      data,
+    },
+  ],
+});
 ```
 
 </details>
