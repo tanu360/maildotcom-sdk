@@ -1,0 +1,65 @@
+{
+  "name": "maildotcom-sdk",
+  "version": "1.0.0",
+  "description": "TypeScript SDK for the mail.com mobile API.",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    }
+  },
+  "files": [
+    "dist/src",
+    "dist/examples",
+    "README.md",
+    "GUIDE.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tanu360/maildotcom-sdk.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tanu360/maildotcom-sdk/issues"
+  },
+  "homepage": "https://github.com/tanu360/maildotcom-sdk#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "npm run clean && tsc -p tsconfig.json",
+    "test": "npm run build && node --test dist/tests/**/*.test.js",
+    "pack:dry": "npm pack --dry-run",
+    "prepack": "npm run build"
+  },
+  "keywords": [
+    "mail.com",
+    "maildotcom",
+    "email",
+    "sdk",
+    "mobile-api",
+    "unofficial-maildotcom-sdk",
+    "maildotcom-sdk",
+    "maildotcom-api",
+    "maildotcom-api-client",
+    "maildotcom-api-sdk",
+    "maildotcom-api-client-sdk",
+    "maildotcom-api-client-library",
+    "maildotcom-api-client-library-sdk",
+    "maildotcom-api-client-library-typescript"
+  ],
+  "author": "Tarun",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "typescript": "^6.0.3"
+  }
+}
