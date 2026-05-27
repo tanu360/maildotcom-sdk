@@ -11,11 +11,13 @@ import {
   printJson,
   skip,
 } from "./_shared.js";
+import { NO_SPAM_EXCLUDED_FOLDERS } from "../src/index.js";
 
 const client = await loginFromEnv();
 
 // Mail read methods covered here:
 // - client.mail.listIncoming(options): lists all mail.
+// - client.mail.listAll(options): alias for listIncoming.
 //   options: amount, orderBy, condition, tagsShowAll, excludeFolderTypeOrId, includeSpam.
 //   Default excludes TRASH, DRAFTS, OUTBOX and includes custom folders.
 // - client.mail.listByFolder(folderId, options): lists a single folder.
@@ -25,6 +27,8 @@ const client = await loginFromEnv();
 // - client.mail.search(query, options): header search across from/replyTo/cc/bcc/to/subject.
 //   options: amount, excludeFolderTypeOrId, orderBy.
 //   Default excludes TRASH, DRAFTS, OUTBOX and includes Spam/custom folders.
+// - client.mail.findBySubject(subject, options): header search plus local subject filtering.
+// - client.mail.findBySender(sender, options): header search plus local sender filtering.
 // - client.mail.getPreview(mailIds): fast preview for one or many mail IDs; does not mark read.
 // - client.mail.getBody(mailId, options): full body; marks read unless markRead is false.
 //   options: format ("html" or "text"), markRead.
@@ -70,8 +74,26 @@ if (query) {
   const searchExcludedFolderTypeOrId = csvEnv("MAILCOM_SEARCH_EXCLUDE_FOLDER_TYPE_OR_ID");
   const searchOptions = searchExcludedFolderTypeOrId.length > 0
     ? { amount, excludeFolderTypeOrId: searchExcludedFolderTypeOrId }
+    : boolEnv("MAILCOM_SEARCH_EXCLUDE_SPAM")
+      ? { amount, excludeFolderTypeOrId: NO_SPAM_EXCLUDED_FOLDERS }
     : { amount };
   printJson("mail.search", await client.mail.search(query, searchOptions));
+}
+
+const findSubject = env("MAILCOM_FIND_SUBJECT");
+if (findSubject) {
+  printJson(
+    "mail.findBySubject",
+    (await client.mail.findBySubject(findSubject, { amount })).map(compactMessage),
+  );
+}
+
+const findSender = env("MAILCOM_FIND_SENDER");
+if (findSender) {
+  printJson(
+    "mail.findBySender",
+    (await client.mail.findBySender(findSender, { amount })).map(compactMessage),
+  );
 }
 
 const previewIds = csvEnv("MAILCOM_PREVIEW_MAIL_IDS");
