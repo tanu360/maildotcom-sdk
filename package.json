@@ -33,7 +33,7 @@
   "scripts": {
     "clean": "rm -rf dist",
     "build": "npm run clean && tsc -p tsconfig.json",
-    "test": "npm run build && node --test dist/tests/**/*.test.js",
+    "test": "npm run build && node --test dist/tests/*.test.js",
     "pack:dry": "npm pack --dry-run",
     "prepack": "npm run build"
   },
