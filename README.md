@@ -9,12 +9,14 @@
     <a href="https://github.com/tanu360/maildotcom-sdk/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/tanu360/maildotcom-sdk/ci.yml?branch=main&style=for-the-badge&label=CI" /></a>
     <a href="https://www.typescriptlang.org/"><img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-Strict-3178C6?style=for-the-badge&logo=typescript&logoColor=white" /></a>
     <a href="https://nodejs.org/"><img alt="Node.js" src="https://img.shields.io/badge/Node.js-20+-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" /></a>
+    <a href="https://skills.sh/tanu360/maildotcom-sdk"><img alt="skills.sh" src="https://skills.sh/b/tanu360/maildotcom-sdk" /></a>
     <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/License-MIT-8B5CF6?style=for-the-badge" /></a>
   </p>
   <p>
     <a href="#quick-start">Quick Start</a> •
     <a href="#usage">Usage</a> •
     <a href="#api-surface">API Surface</a> •
+    <a href="#agent-skill">Agent Skill</a> •
     <a href="./GUIDE.md">Examples Guide</a> •
     <a href="./CHANGELOG.md">Changelog</a>
   </p>
@@ -156,6 +158,26 @@ Use `NO_SPAM_EXCLUDED_FOLDERS`, `mail.listAll()`, `mail.findBySubject()`, and `m
 | `account`     | `aliases`, `updateAliasDisplayName`, `quota`, `settings`, `userData`, `validateRecipients`                                                              |
 
 For request parameters and runnable examples, see [GUIDE.md](./GUIDE.md).
+
+---
+
+## Agent Skill
+
+This repo includes a reusable agent skill for Codex, Claude Code, Cursor, GitHub Copilot, and other agents supported by the `skills` CLI.
+
+Install it from GitHub:
+
+```bash
+npx skills add tanu360/maildotcom-sdk --skill maildotcom-sdk
+```
+
+Install it for specific agents:
+
+```bash
+npx skills add tanu360/maildotcom-sdk --skill maildotcom-sdk -a codex -a claude-code
+```
+
+The skill lives in [`skills/maildotcom-sdk/SKILL.md`](./skills/maildotcom-sdk/SKILL.md) and gives agents the package-specific context needed to integrate auth, sessions, reading, search, polling, sending, drafts, actions, and attachments without re-learning the SDK in every project.
 
 ---
 

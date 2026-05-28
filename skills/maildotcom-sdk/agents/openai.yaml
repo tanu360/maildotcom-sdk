@@ -1,0 +1,8 @@
+interface:
+  display_name: "maildotcom-sdk"
+  short_description: "Build mail.com automations with the SDK"
+  brand_color: "#CB3837"
+  default_prompt: "Use $maildotcom-sdk to add mail.com inbox polling and email sending to this project."
+
+policy:
+  allow_implicit_invocation: true
