@@ -2,7 +2,7 @@
 
 All notable changes to this package are documented here.
 
-## Unreleased
+## 1.0.4 - 2026-05-29
 
 - Normalize `/Folder/...` URI ids in `mail.listByFolder()` and `mail.syncFolder()`.
 - Resolve empty draft create/update responses from the mail.com `Location` header instead of subject/recipient guessing.
