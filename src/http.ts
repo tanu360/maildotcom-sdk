@@ -60,8 +60,11 @@ export class MailComHttpClient {
 
     if (!response.ok) {
       const errorBody = await response.text().catch(() => undefined);
+      const bodySnippet = errorBody?.trim();
       const errorInput = {
-        message: `${method} ${url} failed with ${response.status}`,
+        message: bodySnippet
+          ? `${method} ${url} failed with ${response.status}: ${truncate(bodySnippet)}`
+          : `${method} ${url} failed with ${response.status}`,
         status: response.status,
         method,
         url,
@@ -79,4 +82,8 @@ export class MailComHttpClient {
     }
     return (await response.json()) as T;
   }
+}
+
+function truncate(value: string, length = 300): string {
+  return value.length > length ? `${value.slice(0, length)}...` : value;
 }

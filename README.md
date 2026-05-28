@@ -37,6 +37,7 @@ The SDK uses the Android OAuth flow, stores refreshable sessions locally, and ex
 - File-backed session cache under `.sessions/`
 - Native `fetch`, ESM, strict TypeScript
 - Message listing across mailbox folders with `mail.listIncoming()` / `mail.listAll()`
+- Plain folder IDs and `/Folder/...` URI IDs normalized internally
 - Folder listing, creation, renaming, moving, expiry, and deletion
 - Header search, body previews, and full body fetches
 - Fetching the full body marks a message as read by default

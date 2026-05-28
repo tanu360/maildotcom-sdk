@@ -148,7 +148,8 @@ export class MailComClient {
   private readonly sessionStore: SessionStore;
   private readonly http: MailComHttpClient;
   private session: TokenSession | null = null;
-  private refreshInFlight: Promise<void> | null = null;
+  private loginInFlight: Promise<TokenSession> | null = null;
+  private refreshInFlight: { key: string; promise: Promise<TokenSession> } | null = null;
   private currentTokenBasicAuth: string;
 
   constructor(options: MailComClientOptions) {
@@ -160,12 +161,12 @@ export class MailComClient {
     this.http = new MailComHttpClient(
       this.fetchImpl,
       () => this.session?.accessToken,
-      () => this.refreshWithLock(),
+      () => this.refreshWithLock().then(() => undefined),
     );
 
     this.auth = {
-      login: () => this.login(),
-      refresh: (refreshToken?: string) => this.refresh(refreshToken),
+      login: () => this.loginWithLock(),
+      refresh: (refreshToken?: string) => this.refreshWithLock(refreshToken),
       validateToken: (token?: string) => this.validateToken(token),
       logout: () => this.logout(),
     };
@@ -413,7 +414,7 @@ export class MailComClient {
 
     const accept = options.format === "uris" ? MIME.uriList : MIME.messages;
     const text = await this.http.request<string>(
-      `${this.mailboxBase()}/Folder/${encodeURIComponent(folderId)}/Mail?${params}`,
+      `${this.mailboxBase()}/Folder/${encodeURIComponent(normalizeFolderId(folderId))}/Mail?${params}`,
       {
         auth: true,
         responseType: "text",
@@ -536,7 +537,7 @@ export class MailComClient {
 
   private async send(input: SendMailInput): Promise<MailSubmissionResult> {
     await this.ensureLoggedIn();
-    const url = this.submissionUrl({ uuid: input.uuid });
+    const url = this.submissionUrl({ uuid: input.uuid, includeSubmissionMetadata: true });
     return this.submitMessage(url, await this.buildPayload(input));
   }
 
@@ -845,18 +846,32 @@ export class MailComClient {
 
   private async ensureLoggedIn(): Promise<void> {
     if (this.session?.accessToken) return;
-    await this.login();
+    await this.loginWithLock();
   }
 
-  private async refreshWithLock(): Promise<void> {
-    if (!this.refreshInFlight) {
-      this.refreshInFlight = this.refresh()
-        .then(() => undefined)
-        .finally(() => {
-          this.refreshInFlight = null;
-        });
+  private async loginWithLock(): Promise<TokenSession> {
+    if (!this.loginInFlight) {
+      this.loginInFlight = this.login().finally(() => {
+        this.loginInFlight = null;
+      });
     }
-    await this.refreshInFlight;
+    return this.loginInFlight;
+  }
+
+  private async refreshWithLock(
+    refreshToken = this.session?.refreshToken,
+    tokenBasicAuth = this.currentTokenBasicAuth,
+  ): Promise<TokenSession> {
+    const key = `${tokenBasicAuth}\0${refreshToken ?? ""}`;
+    if (!this.refreshInFlight || this.refreshInFlight.key !== key) {
+      const promise = this.refresh(refreshToken, tokenBasicAuth).finally(() => {
+        if (this.refreshInFlight?.key === key) {
+          this.refreshInFlight = null;
+        }
+      });
+      this.refreshInFlight = { key, promise };
+    }
+    return this.refreshInFlight.promise;
   }
 
   private async loginWithAndroidOAuth(): Promise<TokenSession> {
@@ -1001,12 +1016,17 @@ export class MailComClient {
   }
 
   private submissionUrl(
-    input: { uuid?: string | undefined; inReplyTo?: string | undefined; forwardedOriginal?: string | undefined } = {},
+    input: {
+      uuid?: string | undefined;
+      inReplyTo?: string | undefined;
+      forwardedOriginal?: string | undefined;
+      includeSubmissionMetadata?: boolean | undefined;
+    } = {},
   ): string {
     const params = new URLSearchParams();
     if (input.inReplyTo) params.set("@SUBMISSION-TRANSIENT-IN-REPLY-TO", input.inReplyTo);
     if (input.forwardedOriginal) params.set("@SUBMISSION-TRANSIENT-FORWARDED-ORIGINAL", input.forwardedOriginal);
-    if (input.uuid || input.inReplyTo || input.forwardedOriginal) {
+    if (input.includeSubmissionMetadata || input.uuid || input.inReplyTo || input.forwardedOriginal) {
       params.set("@SUBMISSION-TRANSIENT-UUID", input.uuid ?? crypto.randomUUID());
       params.set("MailSizeLimitExceededExceptionMapper.explicitCode", "true");
     }
@@ -1078,6 +1098,9 @@ function validateAttachments(attachments: MailAttachmentInput[]): void {
 function validateAttachmentData(attachment: MailAttachmentInput): void {
   if (attachment.data === undefined && attachment.base64data === undefined) {
     throw new MailComValidationError(`Attachment "${attachment.filename}" requires data or base64data.`);
+  }
+  if (attachment.data !== undefined && attachment.base64data !== undefined) {
+    throw new MailComValidationError(`Attachment "${attachment.filename}" must not include both data and base64data.`);
   }
 }
 

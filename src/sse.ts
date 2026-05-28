@@ -46,7 +46,13 @@ export function parseSseJsonData<T>(text: string): T[] {
 }
 
 export function parseMailSubmissionResult(text: string): { messageId: string; rawLocation: string } {
-  const success = parseSse(text).find((event) => event.event === "success" && event.data);
+  const events = parseSse(text);
+  const error = events.find((event) => event.event === "error" && event.data);
+  if (error) {
+    throw new Error(`mail.com submission failed: ${error.data.trim()}`);
+  }
+
+  const success = events.find((event) => event.event === "success" && event.data);
   if (!success) {
     throw new Error("mail.com submission did not return a success event");
   }

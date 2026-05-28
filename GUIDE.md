@@ -295,11 +295,11 @@ await client.mail.send({
 | `bcc` | No | BCC recipient or recipients |
 | `subject` | No | Subject |
 | `htmlBody` | Yes | HTML message body |
-| `attachments` | No | Files encoded by SDK; each item needs `data` or `base64data`, max total size 25 MB |
+| `attachments` | No | Files encoded by SDK; each item needs exactly one of `data` or `base64data`, max total size 25 MB |
 | `priority` | No | mail.com priority string, default `"3"` |
 | `date` | No | Millisecond timestamp |
 | `dispositionNotificationTo` | No | Read receipt request address or addresses |
-| `uuid` | No | Submission transient UUID |
+| `uuid` | No | Submission transient UUID; generated automatically when omitted |
 
 ### Reply and Forward
 

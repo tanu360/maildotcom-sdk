@@ -80,7 +80,9 @@ test("send builds minimal mail payload and parses SSE response", async () => {
 
   assert.equal(result.messageId, "<msg@host>");
   const sendRequest = requests.at(-1);
-  assert.ok(sendRequest?.url.endsWith("/Mailsubmission"));
+  assert.match(sendRequest?.url ?? "", /\/Mailsubmission\?/);
+  assert.match(sendRequest?.url ?? "", /%40SUBMISSION-TRANSIENT-UUID=/);
+  assert.match(sendRequest?.url ?? "", /MailSizeLimitExceededExceptionMapper\.explicitCode=true/);
   assert.equal(sendRequest?.headers.get("authorization"), "Bearer access");
   const payload = JSON.parse(sendRequest?.body ?? "{}") as { mailHeader: { to: string[] }; htmlBody: string };
   assert.deepEqual(payload.mailHeader.to, ["recipient@example.com"]);
@@ -201,6 +203,44 @@ test("send allows explicitly empty base64 attachment data", async () => {
 
   const payload = JSON.parse(requests.at(-1)?.body ?? "{}") as { attachments: Array<{ base64data: string }> };
   assert.equal(payload.attachments[0]?.base64data, "");
+});
+
+test("send rejects attachment input with both data and base64data before request", async () => {
+  const store = new MemorySessionStore();
+  await store.save("user@mail.com", {
+    accessToken: "access",
+    refreshToken: "refresh",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+
+  const { fetch, requests } = mockFetch([new Response(null, { status: 200 })]);
+
+  const client = new MailComClient({
+    email: "user@mail.com",
+    sessionStore: store,
+    fetch,
+  });
+
+  await client.login();
+  await assert.rejects(
+    client.mail.send({
+      to: "recipient@example.com",
+      subject: "Ambiguous attachment data",
+      htmlBody: "body",
+      attachments: [
+        {
+          contentType: "text/plain",
+          filename: "ambiguous.txt",
+          base64data: "",
+          data: "real data",
+        },
+      ],
+    }),
+    /ambiguous\.txt.*both data and base64data/,
+  );
+
+  assert.equal(requests.length, 1);
 });
 
 test("reply and forward infer prefixed subjects from original mail when available", async () => {
@@ -478,6 +518,38 @@ test("mail convenience aliases reuse confirmed list and search behavior", async 
   assert.match(requests[4]?.body ?? "", /mail\.header:from,replyTo,cc,bcc,to,subject:billing@example\.com/);
 });
 
+test("listByFolder and syncFolder accept folder URI ids", async () => {
+  const store = new MemorySessionStore();
+  await store.save("user@mail.com", {
+    accessToken: "access",
+    refreshToken: "refresh",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+
+  const { fetch, requests } = mockFetch([
+    new Response(null, { status: 200 }),
+    jsonResponse({ mail: [], totalCount: 0 }),
+    new Response("../../Mail/123\r\n", { status: 200, headers: { "content-type": "text/uri-list" } }),
+  ]);
+
+  const client = new MailComClient({
+    email: "user@mail.com",
+    sessionStore: store,
+    fetch,
+  });
+
+  await client.login();
+  await client.mail.listByFolder("/Folder/inbox-id", { amount: 1 });
+  const sync = await client.mail.syncFolder("/Folder/inbox-id", { after: 1779860000000 });
+
+  assert.deepEqual(sync.mailIds, ["123"]);
+  assert.match(requests[1]?.url ?? "", /\/Folder\/inbox-id\/Mail\?/);
+  assert.doesNotMatch(requests[1]?.url ?? "", /%2FFolder%2F/);
+  assert.match(requests[2]?.url ?? "", /\/Folder\/inbox-id\/Mail\?/);
+  assert.doesNotMatch(requests[2]?.url ?? "", /%2FFolder%2F/);
+});
+
 test("authorized requests refresh once on 401 and retry", async () => {
   const store = new MemorySessionStore();
   await store.save("user@mail.com", {
@@ -506,6 +578,174 @@ test("authorized requests refresh once on 401 and retry", async () => {
   assert.equal(requests[1]?.headers.get("authorization"), "Bearer old-access");
   assert.match(requests[2]?.body ?? "", /grant_type=refresh_token/);
   assert.equal(requests[3]?.headers.get("authorization"), "Bearer new-access");
+});
+
+test("API errors include a response body snippet in the message", async () => {
+  const store = new MemorySessionStore();
+  await store.save("user@mail.com", {
+    accessToken: "access",
+    refreshToken: "refresh",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+
+  const { fetch } = mockFetch([
+    new Response(null, { status: 200 }),
+    jsonResponse({ title: "Ambiguous URI path separator" }, { status: 400 }),
+  ]);
+
+  const client = new MailComClient({
+    email: "user@mail.com",
+    sessionStore: store,
+    fetch,
+  });
+
+  await client.login();
+  await assert.rejects(
+    client.mail.listByFolder("bad-folder"),
+    /GET .*\/Folder\/bad-folder\/Mail.* failed with 400: .*Ambiguous URI path separator/,
+  );
+});
+
+test("parallel first authenticated calls share one Android OAuth login", async () => {
+  const store = new MemorySessionStore();
+  const requests: RecordedRequest[] = [];
+  let oauthState = "";
+
+  const fetchImpl: typeof fetch = async (input, init = {}) => {
+    const url = String(input);
+    const method = init.method ?? "GET";
+    const body = await bodyToString(init.body);
+    requests.push({
+      url,
+      method,
+      headers: new Headers(init.headers),
+      body,
+    });
+
+    if (url === "https://oauth2.mail.com/token") {
+      const form = new URLSearchParams(body);
+      const grantType = form.get("grant_type");
+      if (grantType === "authorization_code") {
+        return jsonResponse({ access_token: "android-access", refresh_token: "android-refresh", expires_in: 3600 });
+      }
+      if (grantType === "refresh_token") {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        return jsonResponse({ access_token: "scoped-android-access", expires_in: 3600 });
+      }
+    }
+
+    if (url.startsWith("https://oauth2.mail.com/authorize")) {
+      oauthState = new URL(url).searchParams.get("state") ?? "";
+      return new Response(null, {
+        status: 303,
+        headers: { location: `https://auth.mail.com/loginapp/oauth2?state=${oauthState}&authcode-context=ctx&login_hint=user%40mail.com` },
+      });
+    }
+
+    if (url.startsWith("https://auth.mail.com/loginapp/oauth2")) {
+      return new Response("<html></html>", { status: 200, headers: { "content-type": "text/html" } });
+    }
+
+    if (url === "https://login.mail.com/login") {
+      return new Response(null, {
+        status: 303,
+        headers: { location: "https://oauth2.mail.com/authcode?authcode-context=ctx&auth_time=now&ott=ott" },
+      });
+    }
+
+    if (url.startsWith("https://oauth2.mail.com/authcode")) {
+      return new Response(null, {
+        status: 303,
+        headers: { location: `com.mail.androidmail.redirect://authorization_code_grant?code=auth-code&state=${oauthState}` },
+      });
+    }
+
+    if (url.endsWith("/folders?absoluteURI=false")) {
+      return jsonResponse({ folders: [] });
+    }
+
+    if (url.endsWith("/emailaddresses?absoluteURI=false&q.type.in=SENDER,MAIL_COLLECT&q.state.in=ACTIVE")) {
+      return jsonResponse({ mailaddresslist: [] });
+    }
+
+    if (url === "https://mobsi.mail.com/rest/MobSI/UserData") {
+      return jsonResponse({ user: "ok" });
+    }
+
+    throw new Error(`Unhandled request ${method} ${url}`);
+  };
+
+  const client = new MailComClient({
+    email: "user@mail.com",
+    password: "secret",
+    sessionStore: store,
+    fetch: fetchImpl,
+  });
+
+  await Promise.all([client.folders.list(), client.account.aliases(), client.account.userData()]);
+
+  assert.equal(requests.filter((request) => request.url.startsWith("https://oauth2.mail.com/authorize")).length, 1);
+  assert.equal(requests.filter((request) => request.url === "https://login.mail.com/login").length, 1);
+  assert.deepEqual(
+    requests
+      .filter((request) => request.url === "https://oauth2.mail.com/token")
+      .map((request) => new URLSearchParams(request.body).get("grant_type")),
+    ["authorization_code", "refresh_token"],
+  );
+  assert.equal(requests.filter((request) => request.headers.get("authorization") === "Bearer scoped-android-access").length, 3);
+});
+
+test("parallel public refresh calls share one token refresh request", async () => {
+  const store = new MemorySessionStore();
+  await store.save("user@mail.com", {
+    accessToken: "access",
+    refreshToken: "refresh",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+
+  const requests: RecordedRequest[] = [];
+  const fetchImpl: typeof fetch = async (input, init = {}) => {
+    const url = String(input);
+    const method = init.method ?? "GET";
+    const body = await bodyToString(init.body);
+    requests.push({
+      url,
+      method,
+      headers: new Headers(init.headers),
+      body,
+    });
+
+    if (url === "https://mobsi.mail.com/rest/MobSI/UserData" && method === "HEAD") {
+      return new Response(null, { status: 200 });
+    }
+
+    if (url === "https://oauth2.mail.com/token") {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      return jsonResponse({ access_token: "new-access", expires_in: 3600 });
+    }
+
+    throw new Error(`Unhandled request ${method} ${url}`);
+  };
+
+  const client = new MailComClient({
+    email: "user@mail.com",
+    sessionStore: store,
+    fetch: fetchImpl,
+  });
+
+  await client.login();
+  const [first, second, third] = await Promise.all([
+    client.auth.refresh(),
+    client.auth.refresh(),
+    client.auth.refresh(),
+  ]);
+
+  assert.equal(first.accessToken, "new-access");
+  assert.equal(second.accessToken, "new-access");
+  assert.equal(third.accessToken, "new-access");
+  assert.equal(requests.filter((request) => request.url === "https://oauth2.mail.com/token").length, 1);
 });
 
 test("default login uses Android OAuth directly", async () => {

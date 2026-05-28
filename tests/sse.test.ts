@@ -15,10 +15,16 @@ test("parseMailSubmissionResult extracts decoded message id", () => {
   assert.equal(result.messageId, "<trinity-id@host>");
 });
 
+test("parseMailSubmissionResult surfaces server error events", () => {
+  assert.throws(
+    () => parseMailSubmissionResult("id: 1\nevent: error\ndata: 400\ndata: BAD_REQ\n\n"),
+    /mail\.com submission failed: 400\nBAD_REQ/,
+  );
+});
+
 test("parseSseJsonData returns JSON data events", () => {
   const previews = parseSseJsonData<{ mailIdentifier: string }>(
     'id: 1\nevent: success\ndata: {"mailIdentifier":"123"}\n\n: noop\n\n',
   );
   assert.deepEqual(previews, [{ mailIdentifier: "123" }]);
 });
-
