@@ -295,7 +295,7 @@ await client.mail.send({
 | `bcc` | No | BCC recipient or recipients |
 | `subject` | No | Subject |
 | `htmlBody` | Yes | HTML message body |
-| `attachments` | No | Files encoded by SDK, max total size 25 MB |
+| `attachments` | No | Files encoded by SDK; each item needs `data` or `base64data`, max total size 25 MB |
 | `priority` | No | mail.com priority string, default `"3"` |
 | `date` | No | Millisecond timestamp |
 | `dispositionNotificationTo` | No | Read receipt request address or addresses |
@@ -589,7 +589,7 @@ The example checks the subject first, then the preview, then the full HTML body.
 | --- | --- |
 | Example prints `skipped` | Set the required env vars shown in the skip output |
 | Password is required | Add `MAILCOM_PASSWORD`, or login once to create a `.sessions/` file |
-| Send fails for attachments | Keep total attachment size at or below 25 MB |
+| Send fails for attachments | Include `data` or `base64data` for every attachment and keep total attachment size at or below 25 MB |
 | Code not found | Check sender/subject filters and increase `MAILCOM_CODE_TIMEOUT_MS` |
 | Body read marks mail read | Set `MAILCOM_BODY_MARK_READ=false` or `MAILCOM_CODE_MARK_READ=false` where supported |
 | Search misses a message | `mail.search()` includes Spam/custom folders by default. Check header filters first, then use `mail.listIncoming()` for broad folder reads |

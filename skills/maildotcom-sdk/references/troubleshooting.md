@@ -45,7 +45,7 @@
 
 - `htmlBody` is required for send/draft/reply/forward payloads.
 - Total attachment bytes must stay under 25 MB.
-- Always include filename and content type for attachments.
+- Always include filename, content type, and either `data` or `base64data` for attachments.
 - For read receipts, use `dispositionNotificationTo`; this package does not expose a confirmed seen-timestamp endpoint.
 
 ## Local SDK Development

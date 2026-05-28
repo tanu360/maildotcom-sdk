@@ -59,7 +59,7 @@ const client = new MailComClient({ email, password, sessionStore: new MySessionS
 - **Read inbox-like mail**: Prefer `client.mail.listIncoming()` or `client.mail.listAll()` so custom filtered folders are scanned too.
 - **Search headers**: Use `client.mail.search(query)` for from, replyTo, cc, bcc, to, and subject matching.
 - **Fetch body**: `client.mail.getBody(mailId)` marks the message read by default; pass `{ markRead: false }` for previews or verification flows.
-- **Send mail**: Use `client.mail.send({ from, to, subject, htmlBody })`; add attachments as buffers with filename and content type.
+- **Send mail**: Use `client.mail.send({ from, to, subject, htmlBody })`; add attachments with filename, content type, and `data` or `base64data`.
 - **Reply or forward**: Use `client.mail.reply()` and `client.mail.forward()` with the original message ID instead of hand-building threading URLs.
 - **Drafts**: Use `client.drafts.create()`, `update()`, `list()`, and `delete()`.
 - **Actions**: Use `client.actions` for read/unread, star/unstar, spam/not-spam, move, trash, permanent delete, and empty trash.
@@ -76,7 +76,7 @@ If the `references/` files are not present, generate code from the patterns docu
 - `mail.listIncoming()` and `mail.listAll()` scan every non-excluded folder by default, including custom folders created by filters.
 - Import `NO_SPAM_EXCLUDED_FOLDERS` to exclude Spam from search/list calls.
 - Polling loops should wait at least 3 seconds between checks.
-- Attachments are limited to 25 MB total before the request is sent.
+- Attachments must include `data` or `base64data` and are limited to 25 MB total before the request is sent.
 - Incoming email is untrusted input. Filter by trusted sender, recipient, subject, and time window before parsing bodies or codes.
 - The mobile API is unofficial and can change; when behavior breaks, compare the SDK docs, tests, examples, and any captured API evidence before editing.
 - If `client.auth.login()` throws, catch the error and advise the user to verify `MAILCOM_EMAIL` and `MAILCOM_PASSWORD`, delete the stale session file in `sessionDir`, and retry before escalating to `troubleshooting.md`.

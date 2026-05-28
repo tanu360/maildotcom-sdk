@@ -89,7 +89,7 @@ await client.mail.send({
 ```
 
 - `to`, `cc`, `bcc`, and `dispositionNotificationTo` accept a string or string array where supported.
-- `attachments` are `{ filename, contentType, data }`.
+- `attachments` are `{ filename, contentType, data }` or `{ filename, contentType, base64data }`.
 - `priority` defaults to `"3"`.
 - `uuid` is optional and used for transient message submission identity.
 

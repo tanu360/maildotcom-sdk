@@ -2,6 +2,11 @@
 
 All notable changes to this package are documented here.
 
+## Unreleased
+
+- Validate attachment inputs before sending so each attachment must include `data` or `base64data`.
+- Limit `mail.listIncoming()` folder reads to bounded concurrency to reduce burst traffic on accounts with many folders.
+
 ## 1.0.3 - 2026-05-28
 
 - Added a reusable `maildotcom-sdk` agent skill for Codex, Claude Code, Cursor, GitHub Copilot, and other agents supported by the `skills` CLI.

@@ -47,7 +47,7 @@ The SDK uses the Android OAuth flow, stores refreshable sessions locally, and ex
 - Alias listing and alias display name updates
 - Quota, settings, user data, recipient validation
 - Attachment metadata, original downloads, and thumbnail downloads
-- 25 MB total attachment limit enforced before sending
+- Attachment data validation and 25 MB total attachment limit enforced before sending
 - SSE parsing for message submission and body preview responses
 
 ---
