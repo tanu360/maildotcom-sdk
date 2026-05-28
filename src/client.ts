@@ -73,6 +73,8 @@ type MinimalMailPayload = {
   }>;
 };
 
+const LIST_INCOMING_FOLDER_CONCURRENCY = 5;
+
 export class MailComClient {
   readonly auth: {
     login: () => Promise<TokenSession>;
@@ -451,8 +453,10 @@ export class MailComClient {
       ];
     });
 
-    const responses = await Promise.all(
-      sourceFolders.map(async (sourceFolder) => {
+    const responses = await mapWithConcurrency(
+      sourceFolders,
+      LIST_INCOMING_FOLDER_CONCURRENCY,
+      async (sourceFolder) => {
         const listOptions: ListMailOptions = {
           amount: options.amount ?? 25,
           tagsShowAll: options.tagsShowAll ?? true,
@@ -464,7 +468,7 @@ export class MailComClient {
         const response = await this.listByFolder(sourceFolder.folderIdentifier, listOptions);
         if (isUriListResponse(response)) return [];
         return (response.mail ?? []).map((mail) => ({ ...mail, sourceFolder }));
-      }),
+      },
     );
 
     const mail: IncomingMailMessage[] = responses
@@ -790,9 +794,9 @@ export class MailComClient {
   }
 
   private async buildPayload(input: MinimalMailMessageInput): Promise<MinimalMailPayload> {
-    const from = input.from ?? (await this.defaultSender());
     const attachments = input.attachments ?? [];
-    validateAttachmentSize(attachments);
+    validateAttachments(attachments);
+    const from = input.from ?? (await this.defaultSender());
 
     return {
       mailHeader: {
@@ -1026,7 +1030,27 @@ function mailMatchesId(mail: MailMessage, mailId: string): boolean {
   return typeof candidate === "string" && normalizeMailId(candidate) === mailId;
 }
 
+async function mapWithConcurrency<T, U>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<U>,
+): Promise<U[]> {
+  const results: U[] = [];
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await mapper(items[currentIndex] as T, currentIndex);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 function encodeAttachment(input: MailAttachmentInput): { contentType: string; filename: string; base64data: string } {
+  validateAttachmentData(input);
+
   return {
     contentType: input.contentType,
     filename: input.filename,
@@ -1044,6 +1068,17 @@ function forwardSubject(subject: string | undefined): string {
   const trimmed = subject?.trim();
   if (!trimmed) return "Fwd:";
   return /^fwd?:/i.test(trimmed) ? trimmed : `Fwd: ${trimmed}`;
+}
+
+function validateAttachments(attachments: MailAttachmentInput[]): void {
+  for (const attachment of attachments) validateAttachmentData(attachment);
+  validateAttachmentSize(attachments);
+}
+
+function validateAttachmentData(attachment: MailAttachmentInput): void {
+  if (attachment.data === undefined && attachment.base64data === undefined) {
+    throw new MailComValidationError(`Attachment "${attachment.filename}" requires data or base64data.`);
+  }
 }
 
 function validateAttachmentSize(attachments: MailAttachmentInput[]): void {

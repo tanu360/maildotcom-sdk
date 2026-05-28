@@ -125,6 +125,84 @@ test("send rejects attachments over the 25 MB limit before request", async () =>
   assert.equal(requests.length, 1);
 });
 
+test("send rejects attachment input without data or base64data before request", async () => {
+  const store = new MemorySessionStore();
+  await store.save("user@mail.com", {
+    accessToken: "access",
+    refreshToken: "refresh",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+
+  const { fetch, requests } = mockFetch([new Response(null, { status: 200 })]);
+
+  const client = new MailComClient({
+    email: "user@mail.com",
+    sessionStore: store,
+    fetch,
+  });
+
+  await client.login();
+  await assert.rejects(
+    client.mail.send({
+      to: "recipient@example.com",
+      subject: "Missing attachment data",
+      htmlBody: "body",
+      attachments: [
+        {
+          contentType: "application/pdf",
+          filename: "invoice.pdf",
+        },
+      ],
+    }),
+    /invoice\.pdf.*data or base64data/,
+  );
+
+  assert.equal(requests.length, 1);
+});
+
+test("send allows explicitly empty base64 attachment data", async () => {
+  const store = new MemorySessionStore();
+  await store.save("user@mail.com", {
+    accessToken: "access",
+    refreshToken: "refresh",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+
+  const { fetch, requests } = mockFetch([
+    new Response(null, { status: 200 }),
+    new Response("id: 1\nevent: success\ndata: ../uas/Mailsubmission/-1/%3Cmsg%40host%3E\n\n", {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    }),
+  ]);
+
+  const client = new MailComClient({
+    email: "user@mail.com",
+    sessionStore: store,
+    fetch,
+  });
+
+  await client.login();
+  await client.mail.send({
+    from: "User <user@mail.com>",
+    to: "recipient@example.com",
+    subject: "Empty attachment",
+    htmlBody: "body",
+    attachments: [
+      {
+        contentType: "text/plain",
+        filename: "empty.txt",
+        base64data: "",
+      },
+    ],
+  });
+
+  const payload = JSON.parse(requests.at(-1)?.body ?? "{}") as { attachments: Array<{ base64data: string }> };
+  assert.equal(payload.attachments[0]?.base64data, "");
+});
+
 test("reply and forward infer prefixed subjects from original mail when available", async () => {
   const store = new MemorySessionStore();
   await store.save("user@mail.com", {
@@ -780,6 +858,67 @@ test("listIncoming scans every non-excluded folder by default with folder metada
   assert.match(requests[3]?.url ?? "", /\/Folder\/spam-id\/Mail\?absoluteURI=false&orderBy=INTERNALDATE\+desc&amount=10&tagsShowAll=true$/);
   assert.match(requests[4]?.url ?? "", /\/Folder\/custom-id\/Mail\?absoluteURI=false&orderBy=INTERNALDATE\+desc&amount=10&tagsShowAll=true$/);
   assert.match(requests[5]?.url ?? "", /\/Folder\/sent-id\/Mail\?absoluteURI=false&orderBy=INTERNALDATE\+desc&amount=10&tagsShowAll=true$/);
+});
+
+test("listIncoming limits concurrent folder reads", async () => {
+  const store = new MemorySessionStore();
+  await store.save("user@mail.com", {
+    accessToken: "access",
+    refreshToken: "refresh",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+
+  let inFlightFolderReads = 0;
+  let maxInFlightFolderReads = 0;
+  const fetchImpl: typeof fetch = async (input, init = {}) => {
+    const url = String(input);
+    const method = init.method ?? "GET";
+
+    if (url === "https://mobsi.mail.com/rest/MobSI/UserData" && method === "HEAD") {
+      return new Response(null, { status: 200 });
+    }
+
+    if (url.endsWith("/folders?absoluteURI=false")) {
+      return jsonResponse({
+        folders: Array.from({ length: 8 }, (_, index) => ({
+          folderIdentifier: `folder-${index}`,
+          attribute: { folderType: "USER_DEFINED", folderName: `Folder ${index}` },
+        })),
+      });
+    }
+
+    const folderId = url.match(/\/Folder\/(folder-\d+)\/Mail/)?.[1];
+    if (folderId) {
+      inFlightFolderReads += 1;
+      maxInFlightFolderReads = Math.max(maxInFlightFolderReads, inFlightFolderReads);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      inFlightFolderReads -= 1;
+      return jsonResponse({
+        mail: [
+          {
+            mailURI: `../../Mail/${folderId}-mail`,
+            attribute: { mailIdentifier: `${folderId}-mail`, read: true },
+            mailHeader: { subject: folderId, date: 1000 },
+          },
+        ],
+      });
+    }
+
+    throw new Error(`Unhandled request ${method} ${url}`);
+  };
+
+  const client = new MailComClient({
+    email: "user@mail.com",
+    sessionStore: store,
+    fetch: fetchImpl,
+  });
+
+  await client.login();
+  const incoming = await client.mail.listIncoming({ amount: 1 });
+
+  assert.equal(incoming.totalCount, 8);
+  assert.equal(maxInFlightFolderReads, 5);
 });
 
 test("folder create rename expire move and delete use HAR-confirmed endpoints", async () => {
