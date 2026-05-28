@@ -289,18 +289,21 @@ export class MailComClient {
   }
 
   async logout(): Promise<void> {
-    if (this.session?.refreshToken) {
-      await this.http.request<void>(`${OAUTH_BASE_URL}/token`, {
-        method: "DELETE",
-        responseType: "void",
-        headers: {
-          Accept: "*/*",
-          refresh_token: this.session.refreshToken,
-        },
-      });
+    try {
+      if (this.session?.refreshToken) {
+        await this.http.request<void>(`${OAUTH_BASE_URL}/token`, {
+          method: "DELETE",
+          responseType: "void",
+          headers: {
+            Accept: "*/*",
+            refresh_token: this.session.refreshToken,
+          },
+        });
+      }
+    } finally {
+      this.session = null;
+      await this.sessionStore.delete(this.email);
     }
-    this.session = null;
-    await this.sessionStore.delete(this.email);
   }
 
   private async listFolders(): Promise<Folder[]> {
@@ -507,7 +510,7 @@ export class MailComClient {
         headers: { Accept: options.format === "text" ? "text/plain" : MIME.bodyHtml },
       },
     );
-    if (options.markRead !== false) await this.markReadAfterBodyFetch(normalizedMailId);
+    if (options.markRead !== false) await this.markReadAfterBodyFetch(normalizedMailId).catch(() => undefined);
     return body;
   }
 
@@ -616,7 +619,7 @@ export class MailComClient {
     );
 
     if (responseText.trim()) return JSON.parse(responseText) as MailMessage;
-    return this.findDraftAfterWrite(payload);
+    return this.findDraftAfterWrite(payload, normalizeMailId(draftId));
   }
 
   private async batchUpdate(mailIds: string | string[], patch: JsonObject): Promise<BatchUpdateResult> {
@@ -809,10 +812,11 @@ export class MailComClient {
     };
   }
 
-  private async findDraftAfterWrite(payload: MinimalMailPayload): Promise<MailMessage> {
+  private async findDraftAfterWrite(payload: MinimalMailPayload, preferredDraftId?: string): Promise<MailMessage> {
     const drafts = await this.listDrafts();
     const subject = payload.mailHeader.subject;
     const match =
+      (preferredDraftId ? drafts.mail?.find((mail) => mailMatchesId(mail, preferredDraftId)) : undefined) ??
       drafts.mail?.find((mail) => mail.mailHeader?.subject === subject) ??
       drafts.mail?.find((mail) => payload.mailHeader.to.some((recipient) => mail.mailHeader?.to?.includes(recipient))) ??
       drafts.mail?.[0];
@@ -1015,6 +1019,11 @@ export class MailComClient {
     if (value === undefined) return [];
     return Array.isArray(value) ? value : [value];
   }
+}
+
+function mailMatchesId(mail: MailMessage, mailId: string): boolean {
+  const candidate = mail.attribute?.mailIdentifier ?? mail.mailURI;
+  return typeof candidate === "string" && normalizeMailId(candidate) === mailId;
 }
 
 function encodeAttachment(input: MailAttachmentInput): { contentType: string; filename: string; base64data: string } {

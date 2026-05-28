@@ -256,6 +256,37 @@ test("getBody marks the message read by default", async () => {
   });
 });
 
+test("getBody returns the fetched body when best-effort mark read fails", async () => {
+  const store = new MemorySessionStore();
+  await store.save("user@mail.com", {
+    accessToken: "access",
+    refreshToken: "refresh",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+
+  const { fetch, requests } = mockFetch([
+    new Response(null, { status: 200 }),
+    new Response("<html>body</html>", { status: 200, headers: { "content-type": "text/html" } }),
+    jsonResponse({ error: "temporary failure" }, { status: 503 }),
+  ]);
+
+  const client = new MailComClient({
+    email: "user@mail.com",
+    sessionStore: store,
+    fetch,
+  });
+
+  await client.login();
+  const body = await client.mail.getBody("123");
+
+  assert.equal(body, "<html>body</html>");
+  assert.deepEqual(JSON.parse(requests[2]?.body ?? "{}"), {
+    read: true,
+    mailURIs: ["../../Mail/123"],
+  });
+});
+
 test("getBody can skip marking read when requested", async () => {
   const store = new MemorySessionStore();
   await store.save("user@mail.com", {
@@ -520,6 +551,52 @@ test("draft create resolves live empty 201 response by reading draft list", asyn
   assert.ok(requests.some((request) => request.url.includes("/Folder/DRAFTS/Mail")));
 });
 
+test("draft update empty response returns the known draft id before heuristic matches", async () => {
+  const store = new MemorySessionStore();
+  await store.save("user@mail.com", {
+    accessToken: "access",
+    refreshToken: "refresh",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+
+  const { fetch } = mockFetch([
+    new Response(null, { status: 200 }),
+    new Response("", { status: 200 }),
+    jsonResponse({
+      mail: [
+        {
+          mailURI: "../../Mail/draft-a",
+          attribute: { mailIdentifier: "draft-a", folderType: "DRAFTS" },
+          mailHeader: { subject: "Same subject", to: ["recipient@example.com"] },
+        },
+        {
+          mailURI: "../../Mail/draft-b",
+          attribute: { mailIdentifier: "draft-b", folderType: "DRAFTS" },
+          mailHeader: { subject: "Same subject", to: ["recipient@example.com"] },
+        },
+      ],
+      totalCount: 2,
+    }),
+  ]);
+
+  const client = new MailComClient({
+    email: "user@mail.com",
+    sessionStore: store,
+    fetch,
+  });
+
+  await client.login();
+  const draft = await client.drafts.update("draft-b", {
+    from: "User <user@mail.com>",
+    to: "recipient@example.com",
+    subject: "Same subject",
+    htmlBody: "updated draft B",
+  });
+
+  assert.equal(draft.attribute?.mailIdentifier, "draft-b");
+});
+
 test("logout revokes with refresh_token header and clears session store", async () => {
   const store = new MemorySessionStore();
   await store.save("user@mail.com", {
@@ -547,6 +624,33 @@ test("logout revokes with refresh_token header and clears session store", async 
   assert.equal(logoutRequest?.method, "DELETE");
   assert.equal(logoutRequest?.headers.get("refresh_token"), "refresh");
   assert.equal(logoutRequest?.headers.get("authorization"), null);
+  assert.equal(await store.load("user@mail.com"), null);
+});
+
+test("logout clears local session store when remote revoke fails", async () => {
+  const store = new MemorySessionStore();
+  await store.save("user@mail.com", {
+    accessToken: "access",
+    refreshToken: "refresh",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+
+  const { fetch, requests } = mockFetch([
+    new Response(null, { status: 200 }),
+    jsonResponse({ error: "temporary failure" }, { status: 503 }),
+  ]);
+
+  const client = new MailComClient({
+    email: "user@mail.com",
+    sessionStore: store,
+    fetch,
+  });
+
+  await client.login();
+  await assert.rejects(client.auth.logout(), /DELETE https:\/\/oauth2\.mail\.com\/token failed with 503/);
+
+  assert.equal(requests.at(-1)?.method, "DELETE");
   assert.equal(await store.load("user@mail.com"), null);
 });
 
