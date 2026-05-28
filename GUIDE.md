@@ -333,6 +333,7 @@ await client.mail.forward({
   priority,
   date,
   uuid,
+  originalMail,
 });
 ```
 

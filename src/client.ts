@@ -543,7 +543,7 @@ export class MailComClient {
     const payload = await this.buildPayload({
       ...input,
       to,
-      subject: input.subject ?? `Re: ${input.originalMail?.mailHeader?.subject ?? ""}`.trim(),
+      subject: input.subject ?? replySubject(input.originalMail?.mailHeader?.subject),
     });
 
     return this.submitMessage(
@@ -559,7 +559,7 @@ export class MailComClient {
     await this.ensureLoggedIn();
     const payload = await this.buildPayload({
       ...input,
-      subject: input.subject ?? "Fwd:",
+      subject: input.subject ?? forwardSubject(input.originalMail?.mailHeader?.subject),
     });
 
     return this.submitMessage(
@@ -1023,6 +1023,18 @@ function encodeAttachment(input: MailAttachmentInput): { contentType: string; fi
     filename: input.filename,
     base64data: input.base64data ?? (input.data === undefined ? "" : toBase64(input.data)),
   };
+}
+
+function replySubject(subject: string | undefined): string {
+  const trimmed = subject?.trim();
+  if (!trimmed) return "Re:";
+  return /^re:/i.test(trimmed) ? trimmed : `Re: ${trimmed}`;
+}
+
+function forwardSubject(subject: string | undefined): string {
+  const trimmed = subject?.trim();
+  if (!trimmed) return "Fwd:";
+  return /^fwd?:/i.test(trimmed) ? trimmed : `Fwd: ${trimmed}`;
 }
 
 function validateAttachmentSize(attachments: MailAttachmentInput[]): void {

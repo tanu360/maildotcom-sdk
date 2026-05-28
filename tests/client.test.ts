@@ -125,6 +125,105 @@ test("send rejects attachments over the 25 MB limit before request", async () =>
   assert.equal(requests.length, 1);
 });
 
+test("reply and forward infer prefixed subjects from original mail when available", async () => {
+  const store = new MemorySessionStore();
+  await store.save("user@mail.com", {
+    accessToken: "access",
+    refreshToken: "refresh",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+
+  const { fetch, requests } = mockFetch([
+    new Response(null, { status: 200 }),
+    new Response("id: 1\nevent: success\ndata: ../uas/Mailsubmission/-1/%3Creply%40host%3E\n\n", {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    }),
+    new Response("id: 1\nevent: success\ndata: ../uas/Mailsubmission/-1/%3Cforward%40host%3E\n\n", {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    }),
+  ]);
+
+  const client = new MailComClient({
+    email: "user@mail.com",
+    sessionStore: store,
+    fetch,
+  });
+
+  const originalMail = {
+    mailURI: "../../Mail/123",
+    attribute: { mailIdentifier: "123" },
+    mailHeader: { from: "sender@example.com", subject: "Project ABC" },
+  };
+
+  await client.login();
+  await client.mail.reply({
+    originalMailId: "123",
+    from: "User <user@mail.com>",
+    htmlBody: "reply",
+    originalMail,
+  });
+  await client.mail.forward({
+    originalMailId: "123",
+    from: "User <user@mail.com>",
+    to: "recipient@example.com",
+    htmlBody: "forward",
+    originalMail,
+  });
+
+  assert.equal(JSON.parse(requests[1]?.body ?? "{}").mailHeader.subject, "Re: Project ABC");
+  assert.match(requests[1]?.url ?? "", /%40SUBMISSION-TRANSIENT-IN-REPLY-TO=123/);
+  assert.equal(JSON.parse(requests[2]?.body ?? "{}").mailHeader.subject, "Fwd: Project ABC");
+  assert.match(requests[2]?.url ?? "", /%40SUBMISSION-TRANSIENT-FORWARDED-ORIGINAL=123/);
+});
+
+test("reply and forward keep valid empty-subject fallback", async () => {
+  const store = new MemorySessionStore();
+  await store.save("user@mail.com", {
+    accessToken: "access",
+    refreshToken: "refresh",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+
+  const { fetch, requests } = mockFetch([
+    new Response(null, { status: 200 }),
+    new Response("id: 1\nevent: success\ndata: ../uas/Mailsubmission/-1/%3Creply%40host%3E\n\n", {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    }),
+    new Response("id: 1\nevent: success\ndata: ../uas/Mailsubmission/-1/%3Cforward%40host%3E\n\n", {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    }),
+  ]);
+
+  const client = new MailComClient({
+    email: "user@mail.com",
+    sessionStore: store,
+    fetch,
+  });
+
+  await client.login();
+  await client.mail.reply({
+    originalMailId: "123",
+    from: "User <user@mail.com>",
+    to: "sender@example.com",
+    htmlBody: "reply",
+  });
+  await client.mail.forward({
+    originalMailId: "123",
+    from: "User <user@mail.com>",
+    to: "recipient@example.com",
+    htmlBody: "forward",
+  });
+
+  assert.equal(JSON.parse(requests[1]?.body ?? "{}").mailHeader.subject, "Re:");
+  assert.equal(JSON.parse(requests[2]?.body ?? "{}").mailHeader.subject, "Fwd:");
+});
+
 test("getBody marks the message read by default", async () => {
   const store = new MemorySessionStore();
   await store.save("user@mail.com", {

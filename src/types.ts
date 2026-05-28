@@ -76,6 +76,7 @@ export interface ReplyMailInput {
 export interface ForwardMailInput extends MinimalMailMessageInput {
   originalMailId: string;
   uuid?: string;
+  originalMail?: MailMessage;
 }
 
 export interface MailSubmissionResult {

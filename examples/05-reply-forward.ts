@@ -7,7 +7,7 @@ const client = await loginFromEnv();
 //   params: originalMailId, htmlBody, to, from, cc, bcc, subject, attachments, priority, date, uuid, originalMail.
 //   If originalMail is provided, the SDK can infer reply to/subject from it.
 // - client.mail.forward(input)
-//   params: originalMailId, from, to, cc, bcc, subject, htmlBody, attachments, priority, date, uuid.
+//   params: originalMailId, from, to, cc, bcc, subject, htmlBody, attachments, priority, date, uuid, originalMail.
 
 const originalMailId =
   env("MAILCOM_ORIGINAL_MAIL_ID") ?? env("MAILCOM_ORIGINAL_ID") ?? skip("MAILCOM_ORIGINAL_MAIL_ID is required.");
