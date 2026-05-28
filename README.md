@@ -18,7 +18,6 @@
     <a href="./GUIDE.md">Examples Guide</a> •
     <a href="./CHANGELOG.md">Changelog</a>
   </p>
-  <img width="640" height="320" alt="image" src="https://github.com/user-attachments/assets/ec0e45ac-ac02-499a-9dbc-30d1372bbb1a" />
 </div>
 
 ---
