@@ -11,7 +11,6 @@
     <a href="https://nodejs.org/"><img alt="Node.js" src="https://img.shields.io/badge/Node.js-20+-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" /></a>
     <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/License-MIT-8B5CF6?style=for-the-badge" /></a>
   </p>
-
   <p>
     <a href="#quick-start">Quick Start</a> •
     <a href="#usage">Usage</a> •
@@ -19,6 +18,7 @@
     <a href="./GUIDE.md">Examples Guide</a> •
     <a href="./CHANGELOG.md">Changelog</a>
   </p>
+  <img width="640" height="320" alt="image" src="https://github.com/user-attachments/assets/ec0e45ac-ac02-499a-9dbc-30d1372bbb1a" />
 </div>
 
 ---
