@@ -11,8 +11,8 @@ const client = await loginFromEnv();
 // Draft create/update input params:
 // - from, to, cc, bcc, subject, htmlBody, attachments, priority, date, dispositionNotificationTo.
 //
-// Draft create/update can return an empty 201 body from mail.com. The SDK resolves the written draft
-// by refetching Drafts, which is the confirmed working behavior.
+// Draft create/update can return an empty 201 body from mail.com. The SDK uses the response Location
+// header to resolve the exact written draft after refetching Drafts.
 
 const before = await client.drafts.list();
 printJson("drafts.list.before", before);

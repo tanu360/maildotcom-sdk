@@ -592,12 +592,12 @@ export class MailComClient {
   private async createDraft(input: MinimalMailMessageInput): Promise<MailMessage> {
     await this.ensureLoggedIn();
     const payload = await this.buildPayload(input);
-    const responseText = await this.http.request<string>(
+    const response = await this.http.request<Response>(
       `${this.mailboxBase()}/Folder/DRAFTS/Mail?absoluteURI=false&MailSizeLimitExceededExceptionMapper.explicitCode=true`,
       {
         method: "POST",
         auth: true,
-        responseType: "text",
+        responseType: "raw",
         headers: {
           Accept: "application/json",
           "Content-Type": MIME.minimalMailMessage,
@@ -606,19 +606,18 @@ export class MailComClient {
       },
     );
 
-    if (responseText.trim()) return JSON.parse(responseText) as MailMessage;
-    return this.findDraftAfterWrite(payload);
+    return this.draftFromWriteResponse(response, "Draft create");
   }
 
   private async updateDraft(draftId: string, input: MinimalMailMessageInput): Promise<MailMessage> {
     await this.ensureLoggedIn();
     const payload = await this.buildPayload(input);
-    const responseText = await this.http.request<string>(
+    const response = await this.http.request<Response>(
       `${this.mailboxBase()}/Mail/${encodeURIComponent(normalizeMailId(draftId))}?absoluteURI=false&MailSizeLimitExceededExceptionMapper.explicitCode=true`,
       {
         method: "POST",
         auth: true,
-        responseType: "text",
+        responseType: "raw",
         headers: {
           Accept: "application/vnd.ui.trinity.message+json",
           "Content-Type": MIME.minimalMailMessage,
@@ -627,8 +626,7 @@ export class MailComClient {
       },
     );
 
-    if (responseText.trim()) return JSON.parse(responseText) as MailMessage;
-    return this.findDraftAfterWrite(payload, normalizeMailId(draftId));
+    return this.draftFromWriteResponse(response, "Draft update");
   }
 
   private async batchUpdate(mailIds: string | string[], patch: JsonObject): Promise<BatchUpdateResult> {
@@ -821,17 +819,24 @@ export class MailComClient {
     };
   }
 
-  private async findDraftAfterWrite(payload: MinimalMailPayload, preferredDraftId?: string): Promise<MailMessage> {
+  private async draftFromWriteResponse(response: Response, label: string): Promise<MailMessage> {
+    const responseText = await response.text();
+    if (responseText.trim()) return JSON.parse(responseText) as MailMessage;
+
+    const location = response.headers.get("location");
+    if (!location) {
+      throw new MailComError(`${label} succeeded but mail.com returned no body and no Location header.`);
+    }
+
+    return this.findDraftById(normalizeMailId(location), label);
+  }
+
+  private async findDraftById(draftId: string, label: string): Promise<MailMessage> {
     const drafts = await this.listDrafts();
-    const subject = payload.mailHeader.subject;
-    const match =
-      (preferredDraftId ? drafts.mail?.find((mail) => mailMatchesId(mail, preferredDraftId)) : undefined) ??
-      drafts.mail?.find((mail) => mail.mailHeader?.subject === subject) ??
-      drafts.mail?.find((mail) => payload.mailHeader.to.some((recipient) => mail.mailHeader?.to?.includes(recipient))) ??
-      drafts.mail?.[0];
+    const match = drafts.mail?.find((mail) => mailMatchesId(mail, draftId));
 
     if (!match) {
-      throw new MailComError("Draft write succeeded but mail.com returned no body and the draft could not be found.");
+      throw new MailComError(`${label} succeeded but draft ${draftId} could not be found after refetch.`);
     }
 
     return match;

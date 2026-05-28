@@ -873,7 +873,7 @@ test("default login uses Android OAuth directly", async () => {
   assert.ok(requests.some((request) => request.url === "https://login.mail.com/login"));
 });
 
-test("draft create resolves live empty 201 response by reading draft list", async () => {
+test("draft create resolves empty 201 response from Location header", async () => {
   const store = new MemorySessionStore();
   await store.save("user@mail.com", {
     accessToken: "access",
@@ -884,16 +884,21 @@ test("draft create resolves live empty 201 response by reading draft list", asyn
 
   const { fetch, requests } = mockFetch([
     new Response(null, { status: 200 }),
-    new Response("", { status: 201 }),
+    new Response("", { status: 201, headers: { location: "../../Mail/draft-b" } }),
     jsonResponse({
       mail: [
         {
-          mailURI: "../../Mail/123",
-          attribute: { mailIdentifier: "123", folderType: "DRAFTS" },
+          mailURI: "../../Mail/draft-a",
+          attribute: { mailIdentifier: "draft-a", folderType: "DRAFTS" },
+          mailHeader: { subject: "Draft subject", to: ["recipient@example.com"] },
+        },
+        {
+          mailURI: "../../Mail/draft-b",
+          attribute: { mailIdentifier: "draft-b", folderType: "DRAFTS" },
           mailHeader: { subject: "Draft subject", to: ["recipient@example.com"] },
         },
       ],
-      totalCount: 1,
+      totalCount: 2,
     }),
   ]);
 
@@ -911,11 +916,45 @@ test("draft create resolves live empty 201 response by reading draft list", asyn
     htmlBody: "draft",
   });
 
-  assert.equal(draft.attribute?.mailIdentifier, "123");
+  assert.equal(draft.attribute?.mailIdentifier, "draft-b");
   assert.ok(requests.some((request) => request.url.includes("/Folder/DRAFTS/Mail")));
 });
 
-test("draft update empty response returns the known draft id before heuristic matches", async () => {
+test("draft create does not guess when empty response has no Location header", async () => {
+  const store = new MemorySessionStore();
+  await store.save("user@mail.com", {
+    accessToken: "access",
+    refreshToken: "refresh",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+
+  const { fetch, requests } = mockFetch([
+    new Response(null, { status: 200 }),
+    new Response("", { status: 201 }),
+  ]);
+
+  const client = new MailComClient({
+    email: "user@mail.com",
+    sessionStore: store,
+    fetch,
+  });
+
+  await client.login();
+  await assert.rejects(
+    client.drafts.create({
+      from: "User <user@mail.com>",
+      to: "recipient@example.com",
+      subject: "Draft subject",
+      htmlBody: "draft",
+    }),
+    /no Location header/,
+  );
+
+  assert.equal(requests.length, 2);
+});
+
+test("draft update empty response resolves the new draft from Location header", async () => {
   const store = new MemorySessionStore();
   await store.save("user@mail.com", {
     accessToken: "access",
@@ -926,7 +965,7 @@ test("draft update empty response returns the known draft id before heuristic ma
 
   const { fetch } = mockFetch([
     new Response(null, { status: 200 }),
-    new Response("", { status: 200 }),
+    new Response("", { status: 201, headers: { location: "draft-new" } }),
     jsonResponse({
       mail: [
         {
@@ -939,8 +978,13 @@ test("draft update empty response returns the known draft id before heuristic ma
           attribute: { mailIdentifier: "draft-b", folderType: "DRAFTS" },
           mailHeader: { subject: "Same subject", to: ["recipient@example.com"] },
         },
+        {
+          mailURI: "../../Mail/draft-new",
+          attribute: { mailIdentifier: "draft-new", folderType: "DRAFTS" },
+          mailHeader: { subject: "Same subject", to: ["recipient@example.com"] },
+        },
       ],
-      totalCount: 2,
+      totalCount: 3,
     }),
   ]);
 
@@ -958,7 +1002,7 @@ test("draft update empty response returns the known draft id before heuristic ma
     htmlBody: "updated draft B",
   });
 
-  assert.equal(draft.attribute?.mailIdentifier, "draft-b");
+  assert.equal(draft.attribute?.mailIdentifier, "draft-new");
 });
 
 test("logout revokes with refresh_token header and clears session store", async () => {
