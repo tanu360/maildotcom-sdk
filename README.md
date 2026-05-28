@@ -9,7 +9,7 @@
     <a href="https://github.com/tanu360/maildotcom-sdk/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/tanu360/maildotcom-sdk/ci.yml?branch=main&style=for-the-badge&label=CI" /></a>
     <a href="https://www.typescriptlang.org/"><img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-Strict-3178C6?style=for-the-badge&logo=typescript&logoColor=white" /></a>
     <a href="https://nodejs.org/"><img alt="Node.js" src="https://img.shields.io/badge/Node.js-20+-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" /></a>
-    <a href="https://skills.sh/tanu360/maildotcom-sdk"><img alt="skills.sh" src="https://skills.sh/b/tanu360/maildotcom-sdk" /></a>
+    <a href="https://www.skills.sh/tanu360/maildotcom-sdk"><img alt="Agent Skill" src="https://img.shields.io/badge/Agent%20Skill-skills.sh-C026D3?style=for-the-badge" /></a>
     <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/License-MIT-8B5CF6?style=for-the-badge" /></a>
   </p>
   <p>
