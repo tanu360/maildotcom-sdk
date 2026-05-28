@@ -2,6 +2,17 @@
 
 All notable changes to this package are documented here.
 
+## 1.0.3 - 2026-05-28
+
+- Added a reusable `maildotcom-sdk` agent skill for Codex, Claude Code, Cursor, GitHub Copilot, and other agents supported by the `skills` CLI.
+- Added `skills.sh.json` metadata for the skills.sh repository page.
+- Added agent-focused SDK guidance for auth, sessions, reading, search, polling, sending, drafts, actions, attachments, aliases, and troubleshooting.
+- Documented skill installation commands in the README.
+
+## 1.0.2 - 2026-05-28
+
+- Added GitHub Actions CI for install, test, and package dry-run checks.
+
 ## 1.0.1 - 2026-05-27
 
 - Added broad message discovery defaults for `mail.search()` and `mail.listIncoming()`.

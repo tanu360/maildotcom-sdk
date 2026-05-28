@@ -17,6 +17,8 @@
     "README.md",
     "GUIDE.md",
     "CHANGELOG.md",
+    "skills",
+    "skills.sh.json",
     "LICENSE"
   ],
   "sideEffects": false,
@@ -53,7 +55,11 @@
     "maildotcom-api-client-sdk",
     "maildotcom-api-client-library",
     "maildotcom-api-client-library-sdk",
-    "maildotcom-api-client-library-typescript"
+    "maildotcom-api-client-library-typescript",
+    "agent-skill",
+    "skills-sh",
+    "codex",
+    "claude-code"
   ],
   "author": "Tarun",
   "license": "MIT",
