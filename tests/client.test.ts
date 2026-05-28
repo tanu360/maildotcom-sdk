@@ -580,6 +580,52 @@ test("authorized requests refresh once on 401 and retry", async () => {
   assert.equal(requests[3]?.headers.get("authorization"), "Bearer new-access");
 });
 
+test("login falls back to refresh when cached token validation has a network failure", async () => {
+  const store = new MemorySessionStore();
+  await store.save("user@mail.com", {
+    accessToken: "cached-access",
+    refreshToken: "refresh",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+
+  const requests: RecordedRequest[] = [];
+  const fetchImpl: typeof fetch = async (input, init = {}) => {
+    const url = String(input);
+    const method = init.method ?? "GET";
+    const body = await bodyToString(init.body);
+    requests.push({
+      url,
+      method,
+      headers: new Headers(init.headers),
+      body,
+    });
+
+    if (url === "https://mobsi.mail.com/rest/MobSI/UserData" && method === "HEAD") {
+      throw new Error("temporary network failure");
+    }
+
+    if (url === "https://oauth2.mail.com/token") {
+      return jsonResponse({ access_token: "new-access", expires_in: 3600 });
+    }
+
+    throw new Error(`Unhandled request ${method} ${url}`);
+  };
+
+  const client = new MailComClient({
+    email: "user@mail.com",
+    sessionStore: store,
+    fetch: fetchImpl,
+  });
+
+  const session = await client.login();
+
+  assert.equal(session.accessToken, "new-access");
+  assert.equal(requests[0]?.method, "HEAD");
+  assert.match(requests[1]?.body ?? "", /grant_type=refresh_token/);
+  assert.equal((await store.load("user@mail.com"))?.accessToken, "new-access");
+});
+
 test("API errors include a response body snippet in the message", async () => {
   const store = new MemorySessionStore();
   await store.save("user@mail.com", {

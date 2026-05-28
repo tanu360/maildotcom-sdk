@@ -8,6 +8,7 @@ All notable changes to this package are documented here.
 - Share in-flight login and refresh calls so parallel cold-start requests do not start duplicate OAuth flows.
 - Add submission UUID/idempotency metadata to plain `mail.send()` calls.
 - Validate attachment inputs before sending so each attachment must include exactly one of `data` or `base64data`.
+- Fall back to refresh-token login when cached token validation hits a network error.
 - Surface mail.com API and submission error details in thrown error messages.
 - Limit `mail.listIncoming()` folder reads to bounded concurrency to reduce burst traffic on accounts with many folders.
 

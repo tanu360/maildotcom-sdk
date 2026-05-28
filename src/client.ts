@@ -280,15 +280,19 @@ export class MailComClient {
 
   async validateToken(token = this.session?.accessToken): Promise<boolean> {
     if (!token) return false;
-    const response = await this.fetchImpl(`${MOBSI_BASE_URL}/UserData`, {
-      method: "HEAD",
-      headers: {
-        ...APP_HEADERS,
-        Accept: "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-    });
-    return response.ok;
+    try {
+      const response = await this.fetchImpl(`${MOBSI_BASE_URL}/UserData`, {
+        method: "HEAD",
+        headers: {
+          ...APP_HEADERS,
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
   }
 
   async logout(): Promise<void> {
