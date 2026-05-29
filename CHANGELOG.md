@@ -2,6 +2,11 @@
 
 All notable changes to this package are documented here.
 
+## 1.0.5 - 2026-05-29
+
+- Throw `MailComError` for mail.com submission error events and missing success events so send/reply/forward failures stay within the SDK error family.
+- Escape search query condition separators so literal header searches such as `a:b` do not produce mail.com `400 Illegal condition` responses.
+
 ## 1.0.4 - 2026-05-29
 
 - Normalize `/Folder/...` URI ids in `mail.listByFolder()` and `mail.syncFolder()`.

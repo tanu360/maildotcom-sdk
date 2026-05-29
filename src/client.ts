@@ -380,7 +380,7 @@ export class MailComClient {
     const body = {
       amount: options.amount ?? 25,
       excludeFolderTypeOrId: options.excludeFolderTypeOrId ?? DEFAULT_EXCLUDED_FOLDERS,
-      include: [{ conditions: [`mail.header:from,replyTo,cc,bcc,to,subject:${query}`] }],
+      include: [{ conditions: [`mail.header:from,replyTo,cc,bcc,to,subject:${escapeMailConditionValue(query)}`] }],
       orderBy: options.orderBy ?? "INTERNALDATE desc",
       preferAbsoluteURIs: false,
     };
@@ -1057,6 +1057,13 @@ export class MailComClient {
 function mailMatchesId(mail: MailMessage, mailId: string): boolean {
   const candidate = mail.attribute?.mailIdentifier ?? mail.mailURI;
   return typeof candidate === "string" && normalizeMailId(candidate) === mailId;
+}
+
+function escapeMailConditionValue(value: string): string {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/:/g, "\\:")
+    .replace(/\r\n?|\n/g, " ");
 }
 
 async function mapWithConcurrency<T, U>(

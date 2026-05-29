@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseMailSubmissionResult, parseSse, parseSseJsonData } from "../src/index.js";
+import { MailComError, parseMailSubmissionResult, parseSse, parseSseJsonData } from "../src/index.js";
 
 test("parseSse parses multi-line server-sent events", () => {
   const events = parseSse("id: 1\nevent: success\ndata: hello\ndata: world\n\n: noop\n\n");
@@ -18,7 +18,14 @@ test("parseMailSubmissionResult extracts decoded message id", () => {
 test("parseMailSubmissionResult surfaces server error events", () => {
   assert.throws(
     () => parseMailSubmissionResult("id: 1\nevent: error\ndata: 400\ndata: BAD_REQ\n\n"),
-    /mail\.com submission failed: 400\nBAD_REQ/,
+    (error) => error instanceof MailComError && /mail\.com submission failed: 400\nBAD_REQ/.test(error.message),
+  );
+});
+
+test("parseMailSubmissionResult uses MailComError when success event is missing", () => {
+  assert.throws(
+    () => parseMailSubmissionResult("id: 1\nevent: update\ndata: pending\n\n"),
+    (error) => error instanceof MailComError && /did not return a success event/.test(error.message),
   );
 });
 

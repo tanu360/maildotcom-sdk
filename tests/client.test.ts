@@ -467,6 +467,33 @@ test("search includes spam by default and lets callers exclude it", async () => 
   assert.deepEqual(explicitPayload.excludeFolderTypeOrId, NO_SPAM_EXCLUDED_FOLDERS);
 });
 
+test("search escapes condition parser separators in user query", async () => {
+  const store = new MemorySessionStore();
+  await store.save("user@mail.com", {
+    accessToken: "access",
+    refreshToken: "refresh",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+
+  const { fetch, requests } = mockFetch([
+    new Response(null, { status: 200 }),
+    jsonResponse({ mail: [] }),
+  ]);
+
+  const client = new MailComClient({
+    email: "user@mail.com",
+    sessionStore: store,
+    fetch,
+  });
+
+  await client.login();
+  await client.mail.search("a:b\\c\nnext");
+
+  const payload = JSON.parse(requests[1]?.body ?? "{}") as { include: Array<{ conditions: string[] }> };
+  assert.equal(payload.include[0]?.conditions[0], "mail.header:from,replyTo,cc,bcc,to,subject:a\\:b\\\\c next");
+});
+
 test("mail convenience aliases reuse confirmed list and search behavior", async () => {
   const store = new MemorySessionStore();
   await store.save("user@mail.com", {

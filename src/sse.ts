@@ -1,3 +1,5 @@
+import { MailComError } from "./errors.js";
+
 export interface ServerSentEvent {
   id?: string;
   event?: string;
@@ -49,12 +51,12 @@ export function parseMailSubmissionResult(text: string): { messageId: string; ra
   const events = parseSse(text);
   const error = events.find((event) => event.event === "error" && event.data);
   if (error) {
-    throw new Error(`mail.com submission failed: ${error.data.trim()}`);
+    throw new MailComError(`mail.com submission failed: ${error.data.trim()}`);
   }
 
   const success = events.find((event) => event.event === "success" && event.data);
   if (!success) {
-    throw new Error("mail.com submission did not return a success event");
+    throw new MailComError("mail.com submission did not return a success event");
   }
 
   const rawLocation = success.data.trim();
