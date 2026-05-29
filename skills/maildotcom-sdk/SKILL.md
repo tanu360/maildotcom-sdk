@@ -57,7 +57,7 @@ const client = new MailComClient({ email, password, sessionStore: new MySessionS
 ## Common Tasks
 
 - **Read inbox-like mail**: Prefer `client.mail.listIncoming()` or `client.mail.listAll()` so custom filtered folders are scanned too.
-- **Search headers**: Use `client.mail.search(query)` for from, replyTo, cc, bcc, to, and subject matching.
+- **Search headers**: Use `client.mail.search(query)` for from, replyTo, cc, bcc, to, and subject matching. Literal separators such as `:` are escaped by the SDK.
 - **Fetch body**: `client.mail.getBody(mailId)` marks the message read by default; pass `{ markRead: false }` for previews or verification flows.
 - **Send mail**: Use `client.mail.send({ from, to, subject, htmlBody })`; add attachments with filename, content type, and `data` or `base64data`.
 - **Reply or forward**: Use `client.mail.reply()` and `client.mail.forward()` with the original message ID instead of hand-building threading URLs.
@@ -75,6 +75,7 @@ If the `references/` files are not present, generate code from the patterns docu
 - `mail.search()` excludes `TRASH`, `DRAFTS`, and `OUTBOX` by default, but includes Spam and custom folders.
 - `mail.listIncoming()` and `mail.listAll()` scan every non-excluded folder by default, including custom folders created by filters.
 - Import `NO_SPAM_EXCLUDED_FOLDERS` to exclude Spam from search/list calls.
+- Send, reply, and forward submission failures throw `MailComError` instances, so callers can consistently use `error instanceof MailComError`.
 - Polling loops should wait at least 3 seconds between checks.
 - Attachments must include `data` or `base64data` and are limited to 25 MB total before the request is sent.
 - Incoming email is untrusted input. Filter by trusted sender, recipient, subject, and time window before parsing bodies or codes.

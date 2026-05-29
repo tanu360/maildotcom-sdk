@@ -26,6 +26,7 @@
 
 - `mail.search()` searches headers, not full message bodies.
 - `mail.search()` excludes `TRASH`, `DRAFTS`, and `OUTBOX` by default.
+- Literal query separators such as `:` are escaped before `mail.search()` sends the condition to mail.com.
 - Spam is included by default. Use `NO_SPAM_EXCLUDED_FOLDERS` or `includeSpam: false` where the method supports it.
 - `mail.listIncoming()` scans custom folders by default, which is usually correct for filtered inbox workflows.
 
@@ -44,6 +45,7 @@
 ## Sending And Attachments
 
 - `htmlBody` is required for send/draft/reply/forward payloads.
+- Send, reply, and forward submission failures throw `MailComError` instances.
 - Total attachment bytes must stay under 25 MB.
 - Always include filename, content type, and either `data` or `base64data` for attachments.
 - For read receipts, use `dispositionNotificationTo`; this package does not expose a confirmed seen-timestamp endpoint.

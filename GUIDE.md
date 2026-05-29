@@ -248,7 +248,7 @@ await client.mail.syncFolder(folderId, {
 | `mail.getBody(mailId, options)` | `format`, `markRead` |
 | `mail.getPreview(mailIds)` | `mailId` or `mailId[]` |
 
-`mail.search()` searches message headers and excludes `TRASH`, `DRAFTS`, and `OUTBOX` by default. Spam and custom folders are included. To skip Spam, pass:
+`mail.search()` searches message headers and excludes `TRASH`, `DRAFTS`, and `OUTBOX` by default. Spam and custom folders are included. Literal query text such as `a:b` is escaped before it is sent to the mail.com query parser. To skip Spam, pass:
 
 ```ts
 import { NO_SPAM_EXCLUDED_FOLDERS } from "maildotcom-sdk";
@@ -592,4 +592,4 @@ The example checks the subject first, then the preview, then the full HTML body.
 | Send fails for attachments | Include `data` or `base64data` for every attachment and keep total attachment size at or below 25 MB |
 | Code not found | Check sender/subject filters and increase `MAILCOM_CODE_TIMEOUT_MS` |
 | Body read marks mail read | Set `MAILCOM_BODY_MARK_READ=false` or `MAILCOM_CODE_MARK_READ=false` where supported |
-| Search misses a message | `mail.search()` includes Spam/custom folders by default. Check header filters first, then use `mail.listIncoming()` for broad folder reads |
+| Search misses a message | `mail.search()` includes Spam/custom folders by default and escapes literal separators. Check header filters first, then use `mail.listIncoming()` for broad folder reads |

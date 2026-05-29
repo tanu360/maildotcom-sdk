@@ -137,7 +137,7 @@ const results = await client.mail.search("sender@example.com", {
 });
 ```
 
-`mail.search()` matches headers and excludes `TRASH`, `DRAFTS`, and `OUTBOX` by default. Spam and custom folders are included.
+`mail.search()` matches headers and excludes `TRASH`, `DRAFTS`, and `OUTBOX` by default. Spam and custom folders are included, and literal search text such as `a:b` is escaped for the mail.com query parser.
 
 `mail.listIncoming()` scans all folders except `TRASH`, `DRAFTS`, and `OUTBOX` by default, including custom folders created by filters.
 
@@ -275,6 +275,7 @@ See the full examples guide in [GUIDE.md](./GUIDE.md).
 - Treat incoming email as untrusted input.
 - Prefer trusted sender and subject filters before parsing email bodies.
 - `mail.search()` searches headers and includes Spam/custom folders by default; pass `excludeFolderTypeOrId` to skip extra folders.
+- Send, reply, and forward submission failures throw `MailComError` subclasses/instances for consistent SDK error handling.
 - The mail.com mobile API can change, so endpoints may need updates over time.
 
 ---
