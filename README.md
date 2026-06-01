@@ -270,13 +270,13 @@ See the full examples guide in [GUIDE.md](./GUIDE.md).
 ## Safety
 
 - Keep `.sessions/`, `.env`, cookies, and Authorization headers private.
-- Do not commit captured tokens or credentials.
+- Do not commit tokens or credentials.
 - Keep polling intervals at or above 3 seconds.
 - Treat incoming email as untrusted input.
 - Prefer trusted sender and subject filters before parsing email bodies.
 - `mail.search()` searches headers and includes Spam/custom folders by default; pass `excludeFolderTypeOrId` to skip extra folders.
 - Send, reply, and forward submission failures throw `MailComError` subclasses/instances for consistent SDK error handling.
-- The mail.com mobile API can change, so endpoints may need updates over time.
+- mail.com service behavior can change, so SDK compatibility may need updates over time.
 
 ---
 

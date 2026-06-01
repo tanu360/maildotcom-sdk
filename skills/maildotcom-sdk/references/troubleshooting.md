@@ -48,7 +48,7 @@
 - Send, reply, and forward submission failures throw `MailComError` instances.
 - Total attachment bytes must stay under 25 MB.
 - Always include filename, content type, and either `data` or `base64data` for attachments.
-- For read receipts, use `dispositionNotificationTo`; this package does not expose a confirmed seen-timestamp endpoint.
+- For read receipts, use `dispositionNotificationTo`; this package does not expose a seen-timestamp field.
 
 ## Local SDK Development
 

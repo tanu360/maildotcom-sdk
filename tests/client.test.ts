@@ -533,7 +533,7 @@ test("search escapes condition parser separators in user query", async () => {
   assert.equal(payload.include[0]?.conditions[0], "mail.header:from,replyTo,cc,bcc,to,subject:a\\:b\\\\c next");
 });
 
-test("mail convenience aliases reuse confirmed list and search behavior", async () => {
+test("mail convenience aliases reuse supported list and search behavior", async () => {
   const store = new MemorySessionStore();
   await store.save("user@mail.com", {
     accessToken: "access",
@@ -986,7 +986,7 @@ test("draft create resolves empty 201 response from Location header", async () =
   assert.ok(requests.some((request) => request.url.includes("/Folder/DRAFTS/Mail")));
 });
 
-test("draft create does not guess when empty response has no Location header", async () => {
+test("draft create requires Location header when response body is empty", async () => {
   const store = new MemorySessionStore();
   await store.save("user@mail.com", {
     accessToken: "access",
@@ -1128,7 +1128,7 @@ test("logout clears local session store when remote revoke fails", async () => {
   assert.equal(await store.load("user@mail.com"), null);
 });
 
-test("folders and aliases use mobile query parameters confirmed by HAR", async () => {
+test("folders and aliases use supported mobile query parameters", async () => {
   const store = new MemorySessionStore();
   await store.save("user@mail.com", {
     accessToken: "access",
@@ -1317,7 +1317,7 @@ test("listIncoming limits concurrent folder reads", async () => {
   assert.equal(maxInFlightFolderReads, 5);
 });
 
-test("folder create rename expire move and delete use HAR-confirmed endpoints", async () => {
+test("folder create rename expire move and delete use supported endpoints", async () => {
   const store = new MemorySessionStore();
   await store.save("user@mail.com", {
     accessToken: "access",

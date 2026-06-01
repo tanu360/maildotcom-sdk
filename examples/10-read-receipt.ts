@@ -4,9 +4,9 @@ const client = await loginFromEnv();
 
 // Workflow: request a read receipt on outgoing mail.
 //
-// Confirmed behavior:
+// Supported behavior:
 // - mail.send supports dispositionNotificationTo in the submitted mail header.
-// - mail.com does not expose a confirmed direct "seen timestamp" API in this SDK.
+// - This SDK does not expose a direct "seen timestamp" field.
 // - If the recipient/app sends a receipt, it arrives as a normal email and can be found with search/listIncoming.
 //
 // Env:

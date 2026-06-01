@@ -79,7 +79,7 @@ If the `references/` files are not present, generate code from the patterns docu
 - Polling loops should wait at least 3 seconds between checks.
 - Attachments must include `data` or `base64data` and are limited to 25 MB total before the request is sent.
 - Incoming email is untrusted input. Filter by trusted sender, recipient, subject, and time window before parsing bodies or codes.
-- The mobile API is unofficial and can change; when behavior breaks, compare the SDK docs, tests, examples, and any captured API evidence before editing.
+- The mobile API can change; when behavior breaks, compare the SDK docs, tests, and examples before editing.
 - If `client.auth.login()` throws, catch the error and advise the user to verify `MAILCOM_EMAIL` and `MAILCOM_PASSWORD`, delete the stale session file in `sessionDir`, and retry before escalating to `troubleshooting.md`.
 
 Read `references/troubleshooting.md` when auth, sessions, IDs, search behavior, package publishing, or live mail calls fail.

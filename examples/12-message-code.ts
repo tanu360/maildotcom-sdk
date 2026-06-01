@@ -4,13 +4,13 @@ const client = await loginFromEnv();
 
 // Workflow: wait for a trusted message and extract a short numeric code.
 //
-// Confirmed SDK calls used:
+// SDK calls used:
 // - mail.listIncoming() checks all non-excluded folders, including custom folders.
 // - mail.getPreview(mailId) checks a fast snippet without marking read.
 // - mail.getBody(mailId) fetches the full body and marks the message read by default.
 //
-// This is intentionally a workflow example, not a new mail.com endpoint.
-// It uses only confirmed SDK primitives and filters untrusted messages before parsing.
+// This is intentionally a workflow example that composes existing SDK calls.
+// It uses only supported SDK primitives and filters untrusted messages before parsing.
 //
 // Env:
 // - MAILCOM_CODE_FROM: trusted sender substring, default "sender@example.com".

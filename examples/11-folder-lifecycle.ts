@@ -5,7 +5,7 @@ const client = await loginFromEnv();
 // Workflow: create a user folder, rename it, set expiry, move one mail into it,
 // move the mail back to Inbox, then delete the temporary folder.
 //
-// Confirmed SDK calls used:
+// SDK calls used:
 // - folders.create, folders.rename, folders.setExpireDays, folders.delete.
 // - actions.moveToFolder.
 // - mail.listByFolder for verification.

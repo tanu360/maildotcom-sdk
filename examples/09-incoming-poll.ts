@@ -4,7 +4,7 @@ const client = await loginFromEnv();
 
 // Workflow: lightweight polling across all mail.
 //
-// Confirmed SDK calls used:
+// SDK calls used:
 // - mail.listIncoming() checks all non-excluded folders, including custom folders.
 // - mail.syncFolder(folderId, { after }) returns IDs newer than a timestamp.
 // - mail.getPreview(ids) can fetch snippets without marking messages read.

@@ -5,7 +5,7 @@ const client = await loginFromEnv();
 // Send method covered here:
 // - client.mail.send(input)
 //
-// Confirmed input params:
+// Supported input params:
 // - from: optional sender string. Supports "Display Name <address@mail.com>".
 // - to: required string or string[].
 // - cc, bcc: optional string or string[].

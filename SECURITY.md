@@ -14,7 +14,7 @@ Use GitHub's private vulnerability reporting when available, or contact the main
 
 - Keep `.sessions/` private.
 - Keep `.env` files private.
-- Never commit passwords, access tokens, refresh tokens, cookies, Authorization headers, or HAR captures with live credentials.
+- Never commit passwords, access tokens, refresh tokens, cookies, Authorization headers, or debug logs with live credentials.
 - If a token or password is exposed, rotate it immediately.
 
 ## Email Content Safety

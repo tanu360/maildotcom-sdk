@@ -14,8 +14,8 @@ The project uses TypeScript, native `fetch`, ESM output, and Node.js 20+.
 ## Development
 
 - Keep SDK behavior small, typed, and easy to reason about.
-- Prefer confirmed mail.com mobile API request shapes.
-- Do not add guessed request parameters.
+- Prefer supported mail.com mobile API request shapes.
+- Do not add unsupported request parameters.
 - Keep public APIs using plain IDs such as `mailId`, `folderId`, and `attachmentId`.
 - Add or update tests for request payloads, ID normalization, parsing, and safety checks.
 - Keep examples runnable with environment variables and safe defaults.
@@ -31,6 +31,6 @@ npm pack --dry-run
 
 ## Safety Rules
 
-- Do not commit `.sessions/`, `.env`, cookies, or captured tokens.
+- Do not commit `.sessions/`, `.env`, cookies, or tokens.
 - Do not include real credentials in examples, tests, issues, or pull requests.
-- Sanitize any captured request data before sharing it.
+- Sanitize debug logs before sharing them.

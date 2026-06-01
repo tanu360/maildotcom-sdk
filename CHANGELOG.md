@@ -10,7 +10,7 @@ All notable changes to this package are documented here.
 ## 1.0.4 - 2026-05-29
 
 - Normalize `/Folder/...` URI ids in `mail.listByFolder()` and `mail.syncFolder()`.
-- Resolve empty draft create/update responses from the mail.com `Location` header instead of subject/recipient guessing.
+- Resolve empty draft create/update responses from the mail.com `Location` header instead of subject/recipient matching.
 - Share in-flight login and refresh calls so parallel cold-start requests do not start duplicate OAuth flows.
 - Add submission UUID/idempotency metadata to plain `mail.send()` calls.
 - Validate attachment inputs before sending so each attachment must include exactly one of `data` or `base64data`.

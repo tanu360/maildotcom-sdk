@@ -64,7 +64,7 @@
     "mail-api",
     "mail-sdk",
     "mobile-api",
-    "unofficial-maildotcom-sdk",
+    "maildotcom-client",
     "maildotcom-sdk",
     "maildotcom-api",
     "maildotcom-api-client",
