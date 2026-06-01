@@ -17,3 +17,7 @@ test("normalizes attachment and folder ids", () => {
 test("parses text/uri-list folder responses", () => {
   assert.deepEqual(parseUriList("../../Mail/1\r\n../../Mail/2\r\n"), ["1", "2"]);
 });
+
+test("parseUriList ignores RFC 2483 comment lines", () => {
+  assert.deepEqual(parseUriList("# 2 records\r\n../../Mail/1\r\n../../Mail/2\r\n"), ["1", "2"]);
+});

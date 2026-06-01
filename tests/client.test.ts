@@ -46,6 +46,45 @@ function mockFetch(responses: Response[]): { fetch: typeof fetch; requests: Reco
   return { fetch: fetchImpl, requests };
 }
 
+test("send quotes default sender display names containing RFC 5322 specials", async () => {
+  const store = new MemorySessionStore();
+  await store.save("user@mail.com", {
+    accessToken: "access",
+    refreshToken: "refresh",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+
+  const { fetch, requests } = mockFetch([
+    new Response(null, { status: 200 }),
+    jsonResponse({
+      mailaddresslist: [
+        { address: "user@mail.com", displayName: "Doe, John", defaultSenderAddress: true },
+      ],
+    }),
+    new Response("id: 1\nevent: success\ndata: ../uas/Mailsubmission/-1/%3Cmsg%40host%3E\n\n", {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    }),
+  ]);
+
+  const client = new MailComClient({
+    email: "user@mail.com",
+    sessionStore: store,
+    fetch,
+  });
+
+  await client.login();
+  await client.mail.send({
+    to: "recipient@example.com",
+    subject: "Hello",
+    htmlBody: "<html><body>Hi</body></html>",
+  });
+
+  const payload = JSON.parse(requests.at(-1)?.body ?? "{}") as { mailHeader: { from: string } };
+  assert.equal(payload.mailHeader.from, '"Doe, John" <user@mail.com>');
+});
+
 test("send builds minimal mail payload and parses SSE response", async () => {
   const store = new MemorySessionStore();
   const session: TokenSession = {

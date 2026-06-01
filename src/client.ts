@@ -846,7 +846,7 @@ export class MailComClient {
     const aliases = await this.aliases().catch(() => null);
     const sender = aliases?.mailaddresslist?.find((alias) => alias.defaultSenderAddress) ?? aliases?.mailaddresslist?.[0];
     if (!sender?.address) return this.email;
-    return sender.displayName ? `${sender.displayName} <${sender.address}>` : sender.address;
+    return sender.displayName ? `${formatDisplayName(sender.displayName)} <${sender.address}>` : sender.address;
   }
 
   private flattenFolders(folders: Folder[]): Folder[] {
@@ -1092,6 +1092,13 @@ function encodeAttachment(input: MailAttachmentInput): { contentType: string; fi
     filename: input.filename,
     base64data: input.base64data ?? (input.data === undefined ? "" : toBase64(input.data)),
   };
+}
+
+function formatDisplayName(name: string): string {
+  if (/[",()<>[\]:;@\\]/.test(name)) {
+    return `"${name.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+  }
+  return name;
 }
 
 function replySubject(subject: string | undefined): string {
