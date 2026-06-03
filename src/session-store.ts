@@ -1,4 +1,5 @@
-import { mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { chmod, mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { SessionStore, TokenSession } from "./types.js";
 
@@ -6,15 +7,15 @@ export class MemorySessionStore implements SessionStore {
   private readonly sessions = new Map<string, TokenSession>();
 
   async load(email: string): Promise<TokenSession | null> {
-    return this.sessions.get(email.toLowerCase()) ?? null;
+    return this.sessions.get(accountKey(email)) ?? null;
   }
 
   async save(email: string, session: TokenSession): Promise<void> {
-    this.sessions.set(email.toLowerCase(), session);
+    this.sessions.set(accountKey(email), bindSessionToEmail(email, session));
   }
 
   async delete(email: string): Promise<void> {
-    this.sessions.delete(email.toLowerCase());
+    this.sessions.delete(accountKey(email));
   }
 }
 
@@ -27,9 +28,12 @@ export class FileSessionStore implements SessionStore {
   }
 
   async save(email: string, session: TokenSession): Promise<void> {
-    await mkdir(this.directory, { recursive: true });
-    const sessionPath = this.pathFor(email, session);
-    await writeFile(sessionPath, `${JSON.stringify(session, null, 2)}\n`, "utf8");
+    await mkdir(this.directory, { recursive: true, mode: 0o700 });
+    await chmod(this.directory, 0o700);
+    const boundSession = bindSessionToEmail(email, session);
+    const sessionPath = this.pathFor(email, boundSession);
+    await writeFile(sessionPath, `${JSON.stringify(boundSession, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+    await chmod(sessionPath, 0o600);
     await this.deleteMatching(email, sessionPath);
   }
 
@@ -83,13 +87,23 @@ export class FileSessionStore implements SessionStore {
   }
 
   private filePrefix(email: string): string {
-    return email.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+    const key = accountKey(email);
+    const digest = createHash("sha256").update(key).digest("hex").slice(0, 12);
+    return `acct-${digest}`;
   }
 
   private async readSession(path: string): Promise<TokenSession> {
     const text = await readFile(path, "utf8");
     return JSON.parse(text) as TokenSession;
   }
+}
+
+function accountKey(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+function bindSessionToEmail(email: string, session: TokenSession): TokenSession {
+  return { ...session, accountEmail: accountKey(email) };
 }
 
 async function unlinkIfExists(path: string): Promise<void> {

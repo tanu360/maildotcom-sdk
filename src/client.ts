@@ -232,7 +232,11 @@ export class MailComClient {
   }
 
   async login(): Promise<TokenSession> {
-    const cached = await this.sessionStore.load(this.email);
+    let cached = await this.sessionStore.load(this.email);
+    if (cached && !this.isSessionBoundToClient(cached)) {
+      await this.sessionStore.delete(this.email);
+      cached = null;
+    }
     if (cached?.accessToken && (await this.validateToken(cached.accessToken))) {
       this.session = cached;
       return cached;
@@ -1018,10 +1022,19 @@ export class MailComClient {
     return {
       accessToken: token.access_token,
       refreshToken: token.refresh_token ?? retainedRefreshToken ?? this.session?.refreshToken ?? "",
+      accountEmail: this.accountKey(),
       createdAt: this.session?.createdAt ?? now,
       updatedAt: now,
       ...(token.expires_in ? { expiresAt: now + token.expires_in * 1000 } : {}),
     };
+  }
+
+  private isSessionBoundToClient(session: TokenSession): boolean {
+    return session.accountEmail === this.accountKey();
+  }
+
+  private accountKey(): string {
+    return this.email.trim().toLowerCase();
   }
 
   private submissionUrl(
@@ -1168,10 +1181,25 @@ function toBase64(data: string | ArrayBuffer | ArrayBufferView): string {
 function filenameFromContentDisposition(value: string | null): string | null {
   if (!value) return null;
   const utf8 = value.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
-  if (utf8) return decodeURIComponent(utf8);
+  if (utf8) return safeAttachmentFilename(safeDecode(utf8));
   const quoted = value.match(/filename="([^"]+)"/i)?.[1];
-  if (quoted) return quoted;
-  return value.match(/filename=([^;]+)/i)?.[1] ?? null;
+  if (quoted) return safeAttachmentFilename(quoted);
+  const unquoted = value.match(/filename=([^;]+)/i)?.[1] ?? null;
+  return unquoted ? safeAttachmentFilename(unquoted) : null;
+}
+
+function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function safeAttachmentFilename(value: string): string | null {
+  const filename = value.replace(/\0/g, "").trim().split(/[\\/]+/).filter(Boolean).at(-1);
+  if (!filename || filename === "." || filename === "..") return null;
+  return filename;
 }
 
 function isUriListResponse(response: ListMailResponse): response is UriListResponse {

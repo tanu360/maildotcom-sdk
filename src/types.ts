@@ -5,6 +5,7 @@ export type AddressList = string | string[];
 export interface TokenSession {
   accessToken: string;
   refreshToken: string;
+  accountEmail?: string;
   createdAt: number;
   updatedAt: number;
   expiresAt?: number;

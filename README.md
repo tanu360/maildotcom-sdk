@@ -186,10 +186,10 @@ The skill lives in [`skills/maildotcom-sdk/SKILL.md`](./skills/maildotcom-sdk/SK
 By default, successful login creates a session file under `.sessions/`:
 
 ```txt
-.sessions/you_mail_com-1770000000000.json
+.sessions/acct-1a2b3c4d5e6f-1770000000000.json
 ```
 
-The session file stores tokens and timestamps only. Passwords are not stored.
+The session file stores tokens, timestamps, and the account email used to bind the token cache to the configured mailbox. Passwords are not stored.
 
 ### Custom Session Directory
 

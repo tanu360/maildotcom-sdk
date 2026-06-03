@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { basename, isAbsolute, relative, resolve } from "node:path";
 import {
   MailComClient,
   normalizeAttachmentId,
@@ -148,8 +148,17 @@ export function compactAttachment(attachment: MailAttachment): Record<string, un
 }
 
 export async function saveBinaryOutput(directory: string, filename: string, data: ArrayBuffer): Promise<string> {
-  await mkdir(directory, { recursive: true });
-  const path = join(directory, filename);
+  const outputDirectory = resolve(directory);
+  await mkdir(outputDirectory, { recursive: true });
+  const path = resolve(outputDirectory, safeOutputFilename(filename));
+  const relativePath = relative(outputDirectory, path);
+  if (relativePath.startsWith("..") || isAbsolute(relativePath)) {
+    throw new Error(`Refusing to write outside ${outputDirectory}.`);
+  }
   await writeFile(path, Buffer.from(data));
   return path;
+}
+
+function safeOutputFilename(filename: string): string {
+  return basename(filename.replace(/\\/g, "/")) || "attachment.bin";
 }

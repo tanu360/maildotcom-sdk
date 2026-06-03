@@ -719,6 +719,67 @@ test("API errors include a response body snippet in the message", async () => {
   );
 });
 
+test("login rejects cached sessions that are not bound to the configured email", async () => {
+  let deletedEmail: string | undefined;
+  const sessionStore = {
+    async load(): Promise<TokenSession | null> {
+      return {
+        accessToken: "other-account-access",
+        refreshToken: "other-account-refresh",
+        accountEmail: "other@mail.com",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+    },
+    async save(): Promise<void> {},
+    async delete(email: string): Promise<void> {
+      deletedEmail = email;
+    },
+  };
+  const client = new MailComClient({
+    email: "user@mail.com",
+    sessionStore,
+    fetch: async () => {
+      throw new Error("cached token should not be validated");
+    },
+  });
+
+  await assert.rejects(client.login(), /Password is required/);
+  assert.equal(deletedEmail, "user@mail.com");
+});
+
+test("attachment download returns a safe filename from service metadata", async () => {
+  const store = new MemorySessionStore();
+  await store.save("user@mail.com", {
+    accessToken: "access",
+    refreshToken: "refresh",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+
+  const { fetch } = mockFetch([
+    new Response(null, { status: 200 }),
+    new Response("hello", {
+      status: 200,
+      headers: {
+        "content-disposition": 'attachment; filename="../../codex-traversal-proof.txt"',
+        "content-type": "text/plain",
+      },
+    }),
+  ]);
+
+  const client = new MailComClient({
+    email: "user@mail.com",
+    sessionStore: store,
+    fetch,
+  });
+
+  await client.login();
+  const attachment = await client.attachments.download("mail-id", "attachment-id");
+
+  assert.equal(attachment.filename, "codex-traversal-proof.txt");
+});
+
 test("parallel first authenticated calls share one Android OAuth login", async () => {
   const store = new MemorySessionStore();
   const requests: RecordedRequest[] = [];
