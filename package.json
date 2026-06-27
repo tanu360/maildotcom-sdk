@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js"
+    },
+    "./web-aliases": {
+      "types": "./dist/src/web-aliases.d.ts",
+      "import": "./dist/src/web-aliases.js"
     }
   },
   "files": [

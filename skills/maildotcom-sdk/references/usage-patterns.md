@@ -76,6 +76,24 @@ await client.mail.send({
 });
 ```
 
+## Web Alias Mutations
+
+```ts
+import { MailComWebAliasAddon } from "maildotcom-sdk/web-aliases";
+
+const webAliases = new MailComWebAliasAddon({
+  email: process.env.MAILCOM_EMAIL!,
+  password: process.env.MAILCOM_PASSWORD!,
+});
+
+await webAliases.createAlias("my-alias@mail.com");
+await webAliases.setDefaultAlias("my-alias@mail.com", { sender: "email" });
+await webAliases.setDefaultAlias("my-alias@mail.com", { sender: "name-email" });
+await webAliases.deleteAlias("my-alias@mail.com");
+```
+
+Use `client.account.aliases()` to verify alias state and `client.account.updateAliasDisplayName()` before selecting `name-email` when the alias needs a display name.
+
 ## Send With Attachment
 
 ```ts

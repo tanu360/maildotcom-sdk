@@ -50,6 +50,7 @@ The SDK uses the Android OAuth flow, stores refreshable sessions locally, and ex
 - Attachment metadata, original downloads, and thumbnail downloads
 - Attachment data validation and 25 MB total attachment limit enforced before sending
 - SSE parsing for message submission and body preview responses
+- Optional web alias addon for alias creation, deletion, and default sender selection
 
 ---
 
@@ -143,6 +144,24 @@ const results = await client.mail.search("sender@example.com", {
 
 Use `NO_SPAM_EXCLUDED_FOLDERS`, `mail.listAll()`, `mail.findBySubject()`, and `mail.findBySender()` for common read patterns. Full recipes live in [GUIDE.md](./GUIDE.md).
 
+### Web Alias Addon
+
+Alias listing and display name updates use the mobile API on `MailComClient`. Creating aliases, deleting aliases, and choosing the default sender variant require the webmail settings flow, so they live in a separate addon module.
+
+```ts
+import { MailComWebAliasAddon } from "maildotcom-sdk/web-aliases";
+
+const aliases = new MailComWebAliasAddon({
+  email: process.env.MAILCOM_EMAIL!,
+  password: process.env.MAILCOM_PASSWORD!,
+});
+
+await aliases.createAlias("my-alias@mail.com");
+await aliases.setDefaultAlias("my-alias@mail.com", { sender: "email" });
+await aliases.setDefaultAlias("my-alias@mail.com", { sender: "name-email" });
+await aliases.deleteAlias("my-alias@mail.com");
+```
+
 ---
 
 ## API Surface
@@ -156,6 +175,7 @@ Use `NO_SPAM_EXCLUDED_FOLDERS`, `mail.listAll()`, `mail.findBySubject()`, and `m
 | `actions`     | `markRead`, `markUnread`, `star`, `unstar`, `markSpam`, `markNotSpam`, `moveToFolder`, `moveToTrash`, `deletePermanent`, `emptyTrash`                   |
 | `attachments` | `listFromMessage`, `download`, `thumbnail`                                                                                                              |
 | `account`     | `aliases`, `updateAliasDisplayName`, `quota`, `settings`, `userData`, `validateRecipients`                                                              |
+| `web-aliases` | `createAlias`, `deleteAlias`, `setDefaultAlias`, `defaultSenderOptions`                                                                                 |
 
 For request parameters and runnable examples, see [GUIDE.md](./GUIDE.md).
 

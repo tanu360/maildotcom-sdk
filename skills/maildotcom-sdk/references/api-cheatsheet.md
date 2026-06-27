@@ -10,6 +10,8 @@ import {
   type SessionStore,
   type TokenSession,
 } from "maildotcom-sdk";
+
+import { MailComWebAliasAddon } from "maildotcom-sdk/web-aliases";
 ```
 
 ## Client Options
@@ -41,6 +43,7 @@ new MailComClient({
 | `actions` | `markRead`, `markUnread`, `star`, `unstar`, `markSpam`, `markNotSpam`, `moveToFolder`, `moveToTrash`, `deletePermanent`, `emptyTrash` |
 | `attachments` | `listFromMessage`, `download`, `thumbnail` |
 | `account` | `aliases`, `updateAliasDisplayName`, `quota`, `settings`, `userData`, `validateRecipients` |
+| `web-aliases` | `createAlias`, `deleteAlias`, `setDefaultAlias`, `defaultSenderOptions` |
 
 ## Reading Options
 
@@ -115,3 +118,16 @@ const thumb = await client.attachments.thumbnail(mailId, attachmentId, {
 ```
 
 Downloaded files include binary `data`, optional `contentType`, and optional `filename`.
+
+## Web Alias Addon
+
+```ts
+const webAliases = new MailComWebAliasAddon({ email, password });
+
+await webAliases.createAlias("my-alias@mail.com");
+await webAliases.setDefaultAlias("my-alias@mail.com", { sender: "email" });
+await webAliases.setDefaultAlias("my-alias@mail.com", { sender: "name-email" });
+await webAliases.deleteAlias("my-alias@mail.com");
+```
+
+Use this separate addon for alias creation, alias deletion, and default sender variant selection. `client.account.aliases()` and `client.account.updateAliasDisplayName()` remain the mobile API methods for listing aliases and changing display names.

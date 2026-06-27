@@ -145,6 +145,7 @@ Destructive examples require explicit confirmation variables such as `MAILCOM_CO
 | [`10-read-receipt.ts`](./examples/10-read-receipt.ts)               | Workflow        | Send with a read receipt request and optionally search for a receipt email                                                                       |
 | [`11-folder-lifecycle.ts`](./examples/11-folder-lifecycle.ts)       | Workflow        | Create a folder, move a message into it, verify, move it back, delete the folder                                                                 |
 | [`12-message-code.ts`](./examples/12-message-code.ts)               | Workflow        | Poll trusted messages and extract a code                                                                                                         |
+| [`13-web-alias-addon.ts`](./examples/13-web-alias-addon.ts)         | Account addon   | Create/delete aliases and choose default sender as email-only or name-with-email via the separate web alias addon                                |
 
 ---
 
@@ -405,6 +406,19 @@ await client.drafts.create({
 | `account.aliases()`                                    | none                         |
 | `account.validateRecipients(addresses)`                | one address or address array |
 | `account.updateAliasDisplayName(address, displayName)` | alias address, display name  |
+
+### Web Alias Addon
+
+Import from `maildotcom-sdk/web-aliases` when you need webmail-only alias mutations:
+
+| Method                                  | Params                            |
+| --------------------------------------- | --------------------------------- |
+| `createAlias(address)`                  | alias address                     |
+| `deleteAlias(address)`                  | deletable alias address           |
+| `setDefaultAlias(address, { sender })`  | `sender`: `email` or `name-email` |
+| `defaultSenderOptions(address)`         | alias address                     |
+
+The addon is separate from `MailComClient` because these actions use the mail.com web settings/Wicket flow instead of the mobile API.
 
 ---
 
