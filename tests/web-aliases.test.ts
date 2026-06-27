@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { MailComWebAliasAddon } from "../src/web-aliases.js";
+import { MAILCOM_ALIAS_DOMAINS, MailComWebAliasAddon } from "../src/web-aliases.js";
 
 type RecordedRequest = {
   url: string;
@@ -49,22 +49,27 @@ function mockFetch(responses: Response[]): { fetch: typeof fetch; requests: Reco
 }
 
 function aliasPage(includeAlias: boolean): string {
-  const aliasRow = includeAlias
-    ? `<div class="table_body-row table_row" data-row-id="alias-row"><div>sdkalias@mail.com</div></div>`
-    : "";
+  const rows = `
+    <div class="table_body-row table_row is-first" data-row-id="primary-row">
+      <div><strong>user@mail.com</strong> (Default sender address)</div>
+    </div>
+    ${includeAlias ? `<div class="table_body-row table_row" data-row-id="alias-row"><div>sdkalias@mail.com</div></div>` : ""}
+  `;
+  return aliasPageWithRows(rows);
+}
+
+function aliasPageWithRows(rows: string): string {
   return `
     <form id="create-form">
       <input name="fieldSet:fieldSet_body:grid:addressSelection:localPart" />
       <select name="fieldSet:fieldSet_body:grid:addressSelection:domainSelection">
         <option value="option-mail">mail.com</option>
         <option value="option-other">email.com</option>
+        <option value="option-myself">myself.com</option>
       </select>
     </form>
     <div class="table_body">
-      <div class="table_body-row table_row is-first" data-row-id="primary-row">
-        <div><strong>user@mail.com</strong> (Default sender address)</div>
-      </div>
-      ${aliasRow}
+      ${rows}
     </div>
     <div class="js-template is-hidden">${"x".repeat(2200)}</div>
     <script>
@@ -105,7 +110,20 @@ function deleteDialog(): string {
   `;
 }
 
-function webLoginResponses(): Response[] {
+function systemMessage(headline: string, detail: string): string {
+  return `
+    <?xml version="1.0" encoding="UTF-8"?><ajax-response><component id="id52"><![CDATA[
+      <div class="system-message is-warning system-message-inline" data-webdriver="systemMessage">
+        <div class="system-message_content">
+          <h4 class="headline headline-layout4" data-webdriver="headline">${headline}</h4>
+          <p class="paragraph" data-webdriver="text">${detail}</p>
+        </div>
+      </div>
+    ]]></component></ajax-response>
+  `;
+}
+
+function webLoginResponses(page = aliasPage(false)): Response[] {
   return [
     redirect("https://mlogin.mail.com/oauth2/?client_id=mailcom_mailcheck_chrome&state=state&authcode-context=ctx&login_hint=user%40mail.com"),
     htmlResponse(`<input name="service" value="oauth2" />`),
@@ -123,7 +141,7 @@ function webLoginResponses(): Response[] {
       "https://3c-lxa.mail.com/mail/client/settings/signature/;jsessionid=JID?navsid=nav-sid&iac_appname=mail_settings&iac_token=token",
     ),
     htmlResponse("<html>signature</html>"),
-    htmlResponse(aliasPage(false)),
+    htmlResponse(page),
   ];
 }
 
@@ -146,6 +164,7 @@ test("web alias addon creates, selects default sender variants, and deletes alia
     fetch,
   });
 
+  assert.deepEqual(await addon.availableDomains(), ["mail.com", "email.com", "myself.com"]);
   assert.deepEqual(await addon.createAlias("sdkalias@mail.com"), { address: "sdkalias@mail.com" });
   assert.deepEqual(await addon.defaultSenderOptions("sdkalias@mail.com"), [
     { value: "radioEmail", label: "sdkalias@mail.com", sender: "email", selected: true },
@@ -172,4 +191,101 @@ test("web alias addon creates, selects default sender variants, and deletes alia
 
   const deleteOpen = requests.find((request) => request.url.includes("hoverIcons-2-hoverIcon"));
   assert.ok(deleteOpen?.url.includes("rowId=alias-row"));
+});
+
+test("web alias addon exports the known mail.com alias domain allowlist", () => {
+  assert.equal(MAILCOM_ALIAS_DOMAINS.length, new Set(MAILCOM_ALIAS_DOMAINS).size);
+  assert.ok(MAILCOM_ALIAS_DOMAINS.includes("mail.com"));
+  assert.ok(MAILCOM_ALIAS_DOMAINS.includes("email.com"));
+  assert.ok(MAILCOM_ALIAS_DOMAINS.includes("myself.com"));
+  assert.ok(MAILCOM_ALIAS_DOMAINS.includes("workmail.com"));
+  assert.ok(MAILCOM_ALIAS_DOMAINS.includes("2trom.com"));
+  assert.ok(MAILCOM_ALIAS_DOMAINS.includes("cheerful.com"));
+});
+
+test("web alias addon rejects unsupported domains before opening webmail", async () => {
+  const { fetch, requests } = mockFetch([]);
+  const addon = new MailComWebAliasAddon({
+    email: "user@mail.com",
+    password: "password",
+    fetch,
+  });
+
+  await assert.rejects(
+    () => addon.createAlias("sdkalias@example.org"),
+    /Alias domain is not supported by mail\.com: example\.org/,
+  );
+  assert.equal(requests.length, 0);
+});
+
+test("web alias addon surfaces mail.com create validation messages", async () => {
+  const { fetch } = mockFetch([
+    ...webLoginResponses(),
+    htmlResponse(
+      systemMessage(
+        "This e-mail-address (itstarun@myself.com) is not available!",
+        "Please enter a different name and try again",
+      ),
+    ),
+  ]);
+
+  const addon = new MailComWebAliasAddon({
+    email: "user@mail.com",
+    password: "password",
+    fetch,
+  });
+
+  await assert.rejects(
+    () => addon.createAlias("itstarun@myself.com"),
+    /This e-mail-address \(itstarun@myself\.com\) is not available! Please enter a different name and try again/,
+  );
+});
+
+test("web alias addon rejects create before posting when alias limit is already reached", async () => {
+  const rows = Array.from(
+    { length: 10 },
+    (_, index) =>
+      `<div class="table_body-row table_row" data-row-id="row-${index}"><div>alias${index}@mail.com ${
+        index === 0 ? "(Default sender address)" : ""
+      }</div></div>`,
+  ).join("");
+  const { fetch, requests } = mockFetch(webLoginResponses(aliasPageWithRows(rows)));
+
+  const addon = new MailComWebAliasAddon({
+    email: "user@mail.com",
+    password: "password",
+    fetch,
+  });
+
+  await assert.rejects(
+    () => addon.createAlias("extra@mail.com"),
+    /The maximum number of Alias Addresses has been created\. This e-mail-address could not be created/,
+  );
+  assert.equal(requests.some((request) => request.body.includes("localPart=extra")), false);
+});
+
+test("web alias addon lets mail.com delete a default alias and choose the next default", async () => {
+  const before = aliasPageWithRows(`
+    <div class="table_body-row table_row" data-row-id="primary-row">
+      <div>user@mail.com (Default sender address)</div>
+    </div>
+    <div class="table_body-row table_row" data-row-id="next-row"><div>next@mail.com</div></div>
+  `);
+  const after = aliasPageWithRows(`
+    <div class="table_body-row table_row" data-row-id="next-row">
+      <div>next@mail.com (Default sender address)</div>
+    </div>
+  `);
+  const { fetch, requests } = mockFetch([...webLoginResponses(before), htmlResponse(deleteDialog()), htmlResponse(after)]);
+
+  const addon = new MailComWebAliasAddon({
+    email: "user@mail.com",
+    password: "password",
+    fetch,
+  });
+
+  await addon.deleteAlias("user@mail.com");
+
+  const deleteOpen = requests.find((request) => request.url.includes("hoverIcons-2-hoverIcon"));
+  assert.ok(deleteOpen?.url.includes("rowId=primary-row"));
 });

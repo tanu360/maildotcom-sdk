@@ -1,9 +1,11 @@
-import { MailComWebAliasAddon, type DefaultAliasSender } from "../src/web-aliases.js";
+import { MAILCOM_ALIAS_DOMAINS, MailComWebAliasAddon, type DefaultAliasSender } from "../src/web-aliases.js";
 import { boolEnv, env, printJson, skip } from "./_shared.js";
 
 // Demonstrates the separate webmail alias addon:
+// - MAILCOM_ALIAS_DOMAINS static allowlist
 // - createAlias(address)
 // - deleteAlias(address)
+// - availableDomains()
 // - setDefaultAlias(address, { sender: "email" | "name-email" })
 // - defaultSenderOptions(address)
 
@@ -17,8 +19,16 @@ if (!boolEnv("MAILCOM_ALIAS_CONFIRM_MUTATION")) {
   ]);
 }
 
+if (boolEnv("MAILCOM_ALIAS_LIST_KNOWN_DOMAINS")) {
+  printJson("webAliases.knownDomains", MAILCOM_ALIAS_DOMAINS);
+}
+
 const addon = new MailComWebAliasAddon({ email, password });
 await addon.login();
+
+if (boolEnv("MAILCOM_ALIAS_LIST_DOMAINS")) {
+  printJson("webAliases.availableDomains", await addon.availableDomains());
+}
 
 const createAddress = env("MAILCOM_ALIAS_CREATE");
 if (createAddress) {

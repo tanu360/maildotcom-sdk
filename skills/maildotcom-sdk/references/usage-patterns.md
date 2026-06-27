@@ -79,20 +79,22 @@ await client.mail.send({
 ## Web Alias Mutations
 
 ```ts
-import { MailComWebAliasAddon } from "maildotcom-sdk/web-aliases";
+import { MAILCOM_ALIAS_DOMAINS, MailComWebAliasAddon } from "maildotcom-sdk/web-aliases";
 
 const webAliases = new MailComWebAliasAddon({
   email: process.env.MAILCOM_EMAIL!,
   password: process.env.MAILCOM_PASSWORD!,
 });
 
+console.log(MAILCOM_ALIAS_DOMAINS);
 await webAliases.createAlias("my-alias@mail.com");
+const domains = await webAliases.availableDomains();
 await webAliases.setDefaultAlias("my-alias@mail.com", { sender: "email" });
 await webAliases.setDefaultAlias("my-alias@mail.com", { sender: "name-email" });
 await webAliases.deleteAlias("my-alias@mail.com");
 ```
 
-Use `client.account.aliases()` to verify alias state and `client.account.updateAliasDisplayName()` before selecting `name-email` when the alias needs a display name.
+Use `client.account.aliases()` to verify alias state and `client.account.updateAliasDisplayName()` before selecting `name-email` when the alias needs a display name. `MAILCOM_ALIAS_DOMAINS` is the static known domain allowlist; `createAlias()` rejects domains outside it before opening webmail. Deleting a default alias follows mail.com's webmail behavior: mail.com selects another alias as the default.
 
 ## Send With Attachment
 

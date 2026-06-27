@@ -11,7 +11,7 @@ import {
   type TokenSession,
 } from "maildotcom-sdk";
 
-import { MailComWebAliasAddon } from "maildotcom-sdk/web-aliases";
+import { MAILCOM_ALIAS_DOMAINS, MailComWebAliasAddon } from "maildotcom-sdk/web-aliases";
 ```
 
 ## Client Options
@@ -43,7 +43,7 @@ new MailComClient({
 | `actions` | `markRead`, `markUnread`, `star`, `unstar`, `markSpam`, `markNotSpam`, `moveToFolder`, `moveToTrash`, `deletePermanent`, `emptyTrash` |
 | `attachments` | `listFromMessage`, `download`, `thumbnail` |
 | `account` | `aliases`, `updateAliasDisplayName`, `quota`, `settings`, `userData`, `validateRecipients` |
-| `web-aliases` | `createAlias`, `deleteAlias`, `setDefaultAlias`, `defaultSenderOptions` |
+| `web-aliases` | `createAlias`, `deleteAlias`, `availableDomains`, `setDefaultAlias`, `defaultSenderOptions` |
 
 ## Reading Options
 
@@ -124,10 +124,12 @@ Downloaded files include binary `data`, optional `contentType`, and optional `fi
 ```ts
 const webAliases = new MailComWebAliasAddon({ email, password });
 
+console.log(MAILCOM_ALIAS_DOMAINS);
 await webAliases.createAlias("my-alias@mail.com");
+const domains = await webAliases.availableDomains();
 await webAliases.setDefaultAlias("my-alias@mail.com", { sender: "email" });
 await webAliases.setDefaultAlias("my-alias@mail.com", { sender: "name-email" });
 await webAliases.deleteAlias("my-alias@mail.com");
 ```
 
-Use this separate addon for alias creation, alias deletion, and default sender variant selection. `client.account.aliases()` and `client.account.updateAliasDisplayName()` remain the mobile API methods for listing aliases and changing display names.
+Use this separate addon for alias creation, alias deletion, available alias domain lookup, and default sender variant selection. `MAILCOM_ALIAS_DOMAINS` is the static known domain allowlist; `createAlias()` rejects domains outside it before opening webmail. `client.account.aliases()` and `client.account.updateAliasDisplayName()` remain the mobile API methods for listing aliases and changing display names.

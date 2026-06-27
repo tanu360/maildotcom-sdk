@@ -65,7 +65,7 @@ const client = new MailComClient({ email, password, sessionStore: new MySessionS
 - **Actions**: Use `client.actions` for read/unread, star/unstar, spam/not-spam, move, trash, permanent delete, and empty trash.
 - **Attachments**: Use `client.attachments.listFromMessage()`, `download()`, and `thumbnail()`.
 - **Aliases/account**: Use `client.account.aliases()`, `updateAliasDisplayName()`, `quota()`, `settings()`, `userData()`, and `validateRecipients()`.
-- **Web alias addon**: Use `MailComWebAliasAddon` from `maildotcom-sdk/web-aliases` for webmail-only alias creation, alias deletion, and default sender selection (`email` vs `name-email`).
+- **Web alias addon**: Use `MailComWebAliasAddon` from `maildotcom-sdk/web-aliases` for webmail-only alias creation, alias deletion, available alias domain lookup, and default sender selection (`email` vs `name-email`). Use exported `MAILCOM_ALIAS_DOMAINS` for the known static domain allowlist.
 
 Read `references/usage-patterns.md` for copyable implementation snippets.
 

@@ -1,6 +1,10 @@
 import { randomBytes } from "node:crypto";
 import { MailComApiError, MailComAuthError, MailComValidationError } from "./errors.js";
 import type { FetchLike } from "./types.js";
+import { MAILCOM_ALIAS_DOMAINS } from "./web-alias-domains.js";
+
+export { MAILCOM_ALIAS_DOMAINS } from "./web-alias-domains.js";
+export type { MailComAliasDomain } from "./web-alias-domains.js";
 
 const WEB_OAUTH_CLIENT_ID = "mailcom_mailcheck_chrome";
 const WEB_OAUTH_REDIRECT_URI = "https://lpebgcnlaohcgdfhbffjajlnpifdkllg.chromiumapp.org/";
@@ -11,6 +15,9 @@ const MAIL_SETTINGS_PARTNER_DATA =
 const WEB_USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
 const MAILCOM_ALIAS_LIMIT = 10;
+const MAILCOM_ALIAS_LIMIT_MESSAGE =
+  "The maximum number of Alias Addresses has been created. This e-mail-address could not be created";
+const MAILCOM_ALIAS_DOMAIN_SET = new Set<string>(MAILCOM_ALIAS_DOMAINS);
 
 export type DefaultAliasSender = "email" | "name-email";
 
@@ -103,10 +110,14 @@ export class MailComWebAliasAddon {
   async createAlias(input: string | CreateWebAliasInput): Promise<WebAliasMutationResult> {
     const requestedAddress = typeof input === "string" ? input : input.address;
     const { localPart, domain, address } = splitAliasAddress(requestedAddress);
+    if (!MAILCOM_ALIAS_DOMAIN_SET.has(domain)) {
+      throw new MailComValidationError(`Alias domain is not supported by mail.com: ${domain}`);
+    }
+
     const page = await this.ensurePage();
     const rows = extractAliasRows(page.html);
     if (rows.length >= MAILCOM_ALIAS_LIMIT) {
-      throw new MailComValidationError(`mail.com allows at most ${MAILCOM_ALIAS_LIMIT} total addresses.`);
+      throw new MailComValidationError(MAILCOM_ALIAS_LIMIT_MESSAGE);
     }
 
     const domainOption = domainOptions(page.html).find((option) => option.domain.toLowerCase() === domain.toLowerCase());
@@ -126,8 +137,8 @@ export class MailComWebAliasAddon {
     });
 
     this.page = { url: page.url, html: response };
-    if (!containsAddress(response, address)) {
-      throw new MailComValidationError(`Alias was not created: ${address}`);
+    if (!rowForAddress(response, address)) {
+      throw new MailComValidationError(extractSystemMessage(response) ?? `Alias was not created: ${address}`);
     }
 
     return { address };
@@ -140,7 +151,6 @@ export class MailComWebAliasAddon {
         const page = await this.pageForAttempt(attempt);
         const row = rowForAddress(page.html, address);
         if (!row) throw new MailComValidationError(`Alias not found: ${address}`);
-        if (row.defaultSender) throw new MailComValidationError(`Default sender alias cannot be deleted: ${address}`);
 
         const deleteTarget = extractAjaxTarget(page.html, "hoverIcons-2-hoverIcon");
         const dialog = await this.requestText(
@@ -155,8 +165,8 @@ export class MailComWebAliasAddon {
         );
 
         this.page = { url: page.url, html: response };
-        if (containsAddress(response, address)) {
-          throw new MailComValidationError(`Alias was not deleted: ${address}`);
+        if (rowForAddress(response, address)) {
+          throw new MailComValidationError(extractSystemMessage(response) ?? `Alias was not deleted: ${address}`);
         }
         return;
       } catch (error) {
@@ -166,6 +176,11 @@ export class MailComWebAliasAddon {
       }
     }
     throw lastError;
+  }
+
+  async availableDomains(): Promise<string[]> {
+    const page = await this.ensurePage();
+    return uniqueDomains(domainOptions(page.html).map((option) => option.domain));
   }
 
   async defaultSenderOptions(address: string): Promise<DefaultSenderOption[]> {
@@ -477,6 +492,18 @@ function domainOptions(html: string): Array<{ value: string; domain: string }> {
   }));
 }
 
+function uniqueDomains(domains: string[]): string[] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const domain of domains) {
+    const normalized = domain.toLowerCase();
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    unique.push(normalized);
+  }
+  return unique;
+}
+
 function extractAliasRows(html: string): AliasRow[] {
   const rows: AliasRow[] = [];
   const rowPattern =
@@ -494,10 +521,6 @@ function extractAliasRows(html: string): AliasRow[] {
 function rowForAddress(html: string, address: string): AliasRow | undefined {
   const normalized = address.trim().toLowerCase();
   return extractAliasRows(html).find((row) => row.address === normalized);
-}
-
-function containsAddress(html: string, address: string): boolean {
-  return htmlDecode(html).toLowerCase().includes(address.trim().toLowerCase());
 }
 
 function extractAjaxTarget(html: string, contains: string): AjaxTarget {
@@ -541,6 +564,23 @@ function parseDefaultSenderOptions(html: string): DefaultSenderOption[] {
       } satisfies DefaultSenderOption;
     })
     .filter((item): item is DefaultSenderOption => Boolean(item));
+}
+
+function extractSystemMessage(html: string): string | undefined {
+  const messages: string[] = [];
+  for (const match of html.matchAll(
+    /<h4\b[^>]*class="[^"]*\bheadline\b[^"]*"[^>]*>([\s\S]*?)<\/h4>\s*<p\b[^>]*class="[^"]*\bparagraph\b[^"]*"[^>]*>([\s\S]*?)<\/p>/gi,
+  )) {
+    const headline = cleanMessage(match[1] ?? "");
+    const details = cleanMessage(match[2] ?? "");
+    const message = [headline, details].filter(Boolean).join(" ");
+    if (message && !messages.includes(message)) messages.push(message);
+  }
+  return messages[0];
+}
+
+function cleanMessage(value: string): string {
+  return htmlDecode(value.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
 }
 
 function absoluteUrl(baseUrl: string, value: string): string {

@@ -415,10 +415,13 @@ Import from `maildotcom-sdk/web-aliases` when you need webmail-only alias mutati
 | --------------------------------------- | --------------------------------- |
 | `createAlias(address)`                  | alias address                     |
 | `deleteAlias(address)`                  | deletable alias address           |
+| `availableDomains()`                    | none                              |
 | `setDefaultAlias(address, { sender })`  | `sender`: `email` or `name-email` |
 | `defaultSenderOptions(address)`         | alias address                     |
 
-The addon is separate from `MailComClient` because these actions use the mail.com web settings/Wicket flow instead of the mobile API.
+The addon also exports `MAILCOM_ALIAS_DOMAINS`, the known mail.com alias domain allowlist. `createAlias()` rejects domains outside that list before opening the webmail flow.
+
+The addon is separate from `MailComClient` because these actions use the mail.com web settings/Wicket flow instead of the mobile API. Deleting a default alias follows mail.com's webmail behavior: mail.com selects another alias as the default.
 
 ---
 

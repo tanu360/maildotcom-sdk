@@ -149,7 +149,7 @@ Use `NO_SPAM_EXCLUDED_FOLDERS`, `mail.listAll()`, `mail.findBySubject()`, and `m
 Alias listing and display name updates use the mobile API on `MailComClient`. Creating aliases, deleting aliases, and choosing the default sender variant require the webmail settings flow, so they live in a separate addon module.
 
 ```ts
-import { MailComWebAliasAddon } from "maildotcom-sdk/web-aliases";
+import { MAILCOM_ALIAS_DOMAINS, MailComWebAliasAddon } from "maildotcom-sdk/web-aliases";
 
 const aliases = new MailComWebAliasAddon({
   email: process.env.MAILCOM_EMAIL!,
@@ -157,10 +157,13 @@ const aliases = new MailComWebAliasAddon({
 });
 
 await aliases.createAlias("my-alias@mail.com");
+const domains = await aliases.availableDomains();
 await aliases.setDefaultAlias("my-alias@mail.com", { sender: "email" });
 await aliases.setDefaultAlias("my-alias@mail.com", { sender: "name-email" });
 await aliases.deleteAlias("my-alias@mail.com");
 ```
+
+`createAlias()` rejects domains outside `MAILCOM_ALIAS_DOMAINS` before opening the webmail flow.
 
 ---
 
@@ -175,7 +178,7 @@ await aliases.deleteAlias("my-alias@mail.com");
 | `actions`     | `markRead`, `markUnread`, `star`, `unstar`, `markSpam`, `markNotSpam`, `moveToFolder`, `moveToTrash`, `deletePermanent`, `emptyTrash`                   |
 | `attachments` | `listFromMessage`, `download`, `thumbnail`                                                                                                              |
 | `account`     | `aliases`, `updateAliasDisplayName`, `quota`, `settings`, `userData`, `validateRecipients`                                                              |
-| `web-aliases` | `createAlias`, `deleteAlias`, `setDefaultAlias`, `defaultSenderOptions`                                                                                 |
+| `web-aliases` | `createAlias`, `deleteAlias`, `availableDomains`, `setDefaultAlias`, `defaultSenderOptions`                                                             |
 
 For request parameters and runnable examples, see [GUIDE.md](./GUIDE.md).
 
