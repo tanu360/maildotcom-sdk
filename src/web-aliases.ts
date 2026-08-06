@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { MailComApiError, MailComAuthError, MailComValidationError } from "./errors.js";
 import type { FetchLike } from "./types.js";
 import { MAILCOM_ALIAS_DOMAINS } from "./web-alias-domains.js";
@@ -10,8 +10,14 @@ const WEB_OAUTH_CLIENT_ID = "mailcom_mailcheck_chrome";
 const WEB_OAUTH_REDIRECT_URI = "https://lpebgcnlaohcgdfhbffjajlnpifdkllg.chromiumapp.org/";
 const DEFAULT_WEB_OAUTH_BASIC_AUTH =
   "Basic bWFpbGNvbV9tYWlsY2hlY2tfY2hyb21lOnRJWkNZWjFZOFFhNUt0MjJMVXJXSDJTc29td1VhV1F5dGszWWdNem4=";
+const DEFAULT_SETTINGS_OAUTH_BASIC_AUTH = "Basic bWFpbGNvbV9tYWlsc2V0X3Jvb3RfbGl2ZToqKioqKioq";
 const MAIL_SETTINGS_PARTNER_DATA =
   "eyJ1c2VjYXNlIjoiaW5ib3hfdW5yZWFkIiwiYXJncyI6W10sImlkIjoyLCJjYWxsZXJfYXBwIjoidG9vbGJhciIsImNhbGxlcl92ZXJzaW9uIjoiQ2hyb21lLzguMC41LjAifQ==";
+const SETTINGS_CATS_BASE_URL = "https://settings-cats.mail.com";
+const SETTINGS_OAUTH_BRIDGE_URL = "https://oauthbridge.navigator-lxa.mail.com/navigator/oauth2/token";
+const SETTINGS_OAUTH_GRANT_TYPE = "urn:mam:oauth:grant-type:spa";
+const SETTINGS_OAUTH_SCOPE = "mail_mailbox_w webmailer_setting_r webmailer_setting_w mail_confix_w";
+const SETTINGS_UI_APP = "mailcom.mailset-compose/1.0.5-build.322";
 const WEB_USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
 const MAILCOM_ALIAS_LIMIT = 10;
@@ -26,6 +32,7 @@ export interface MailComWebAliasAddonOptions {
   password: string;
   fetch?: FetchLike;
   oauthBasicAuth?: string;
+  settingsOAuthBasicAuth?: string;
   userAgent?: string;
 }
 
@@ -48,20 +55,34 @@ export interface DefaultSenderOption {
   selected: boolean;
 }
 
-interface AliasPageState {
-  url: string;
-  html: string;
-}
-
-interface AjaxTarget {
-  url: string;
-  component?: string;
-}
-
-interface AliasRow {
-  rowId: string;
+interface SettingsAlias {
+  type?: string;
+  entryDate?: string;
   address: string;
-  defaultSender: boolean;
+  displayName?: string;
+  deletable?: boolean;
+  pgpEnabled?: boolean;
+  defaultSenderAddress?: boolean;
+  defaultReceiverAddress?: boolean;
+  state?: string;
+  _links?: {
+    self?: { href?: string };
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
+interface SettingsAliasesResponse {
+  mailaddresslist?: SettingsAlias[];
+}
+
+interface SettingsDomain {
+  domain?: string;
+  state?: string;
+}
+
+interface SettingsDomainsResponse {
+  domains?: SettingsDomain[];
 }
 
 class CookieJar {
@@ -91,164 +112,217 @@ export class MailComWebAliasAddon {
   private readonly password: string;
   private readonly fetchImpl: FetchLike;
   private readonly oauthBasicAuth: string;
+  private readonly settingsOAuthBasicAuth: string;
   private readonly userAgent: string;
   private readonly cookies = new CookieJar();
-  private page: AliasPageState | null = null;
+  private settingsAccessToken: string | null = null;
 
   constructor(options: MailComWebAliasAddonOptions) {
     this.email = options.email;
     this.password = options.password;
     this.fetchImpl = options.fetch ?? fetch;
     this.oauthBasicAuth = options.oauthBasicAuth ?? DEFAULT_WEB_OAUTH_BASIC_AUTH;
+    this.settingsOAuthBasicAuth = options.settingsOAuthBasicAuth ?? DEFAULT_SETTINGS_OAUTH_BASIC_AUTH;
     this.userAgent = options.userAgent ?? WEB_USER_AGENT;
   }
 
   async login(): Promise<void> {
-    this.page = await this.openAliasesPage();
+    this.settingsAccessToken = await this.openSettingsSession();
   }
 
   async createAlias(input: string | CreateWebAliasInput): Promise<WebAliasMutationResult> {
     const requestedAddress = typeof input === "string" ? input : input.address;
-    const { localPart, domain, address } = splitAliasAddress(requestedAddress);
+    const { domain, address } = splitAliasAddress(requestedAddress);
     if (!MAILCOM_ALIAS_DOMAIN_SET.has(domain)) {
       throw new MailComValidationError(`Alias domain is not supported by mail.com: ${domain}`);
     }
 
-    const page = await this.ensurePage();
-    const rows = extractAliasRows(page.html);
-    if (rows.length >= MAILCOM_ALIAS_LIMIT) {
-      throw new MailComValidationError(MAILCOM_ALIAS_LIMIT_MESSAGE);
+    const aliases = await this.listAliases();
+    if (aliases.length >= MAILCOM_ALIAS_LIMIT) throw new MailComValidationError(MAILCOM_ALIAS_LIMIT_MESSAGE);
+    if (aliases.some((alias) => alias.address.toLowerCase() === address)) {
+      throw new MailComValidationError(`Alias already exists: ${address}`);
     }
 
-    const domainOption = domainOptions(page.html).find((option) => option.domain.toLowerCase() === domain.toLowerCase());
-    if (!domainOption) throw new MailComValidationError(`Alias domain is not available: ${domain}`);
+    const availableDomains = await this.availableDomains();
+    if (!availableDomains.includes(domain)) {
+      throw new MailComValidationError(`Alias domain is not available: ${domain}`);
+    }
 
-    const form = aliasCreateForm(page.html);
-    const target = extractAjaxTarget(page.html, "internalAliasChapter");
-    const body = new URLSearchParams();
-    body.set(form.localPartName, localPart);
-    body.set(form.domainName, domainOption.value);
-    body.set("fieldSet:fieldSet_body:grid:button:button", "1");
-
-    const response = await this.requestText(absoluteUrl(page.url, target.url), {
+    await this.validateAddressAvailable(address);
+    await this.settingsRequest("/mailaccount/primary/emailAddresses?absoluteURI=false", {
       method: "POST",
-      headers: this.wicketHeaders(page.url, target.component, true),
-      body,
+      headers: {
+        Accept: "application/vnd.ui.trinity.minimalmailaddress-v3+json",
+        "Content-Type": "application/vnd.ui.trinity.minimalmailaddress-v3+json",
+      },
+      body: JSON.stringify({
+        address,
+        deletable: true,
+        pgpEnabled: false,
+        defaultSenderAddress: false,
+        defaultReceiverAddress: false,
+        state: "ACTIVE",
+      }),
     });
 
-    this.page = { url: page.url, html: response };
-    if (!rowForAddress(response, address)) {
-      throw new MailComValidationError(extractSystemMessage(response) ?? `Alias was not created: ${address}`);
-    }
-
+    await this.waitForAlias(address, true);
     return { address };
   }
 
   async deleteAlias(address: string): Promise<void> {
-    let lastError: unknown;
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      try {
-        const page = await this.pageForAttempt(attempt);
-        const row = rowForAddress(page.html, address);
-        if (!row) throw new MailComValidationError(`Alias not found: ${address}`);
+    const normalized = splitAliasAddress(address).address;
+    const alias = await this.findAlias(normalized);
+    if (!alias) throw new MailComValidationError(`Alias not found: ${normalized}`);
+    if (alias.deletable === false) throw new MailComValidationError(`Alias is not allowed for deletion: ${normalized}`);
 
-        const deleteTarget = extractAjaxTarget(page.html, "hoverIcons-2-hoverIcon");
-        const dialog = await this.requestText(
-          withQuery(absoluteUrl(page.url, deleteTarget.url), { rowId: row.rowId, _: String(Date.now()) }),
-          { headers: this.wicketHeaders(page.url, deleteTarget.component) },
-        );
-
-        const confirmTarget = extractAjaxTarget(dialog, "buttonContainer-primary");
-        const response = await this.requestText(
-          withQuery(absoluteUrl(page.url, confirmTarget.url), { _: String(Date.now()) }),
-          { headers: this.wicketHeaders(page.url, confirmTarget.component) },
-        );
-
-        this.page = { url: page.url, html: response };
-        if (rowForAddress(response, address)) {
-          throw new MailComValidationError(extractSystemMessage(response) ?? `Alias was not deleted: ${address}`);
-        }
-        return;
-      } catch (error) {
-        lastError = error;
-        if (attempt === 2) break;
-        await delay(1000 * (attempt + 1));
-      }
-    }
-    throw lastError;
+    await this.settingsRequest(
+      `/mailaccount/primary/emailAddressesRemovals/${encodeURIComponent(normalized)}/removals?absoluteURI=false`,
+      {
+        method: "POST",
+        headers: {
+          Accept: "text/plain;charset=UTF-8",
+          "Content-Type": "text/plain;charset=UTF-8",
+        },
+      },
+    );
+    await this.waitForAlias(normalized, false);
   }
 
   async availableDomains(): Promise<string[]> {
-    const page = await this.ensurePage();
-    return uniqueDomains(domainOptions(page.html).map((option) => option.domain));
+    const response = await this.settingsJson<SettingsDomainsResponse>(
+      "/domains?absoluteURI=false&q.state.eq=ACTIVE&q.legacySupport.eq=true",
+      { headers: { Accept: "application/json", "Content-Type": "application/json" } },
+    );
+    const serverDomains = new Set(
+      (response.domains ?? [])
+        .flatMap((item) => item.domain?.trim().toLowerCase() ?? [])
+        .filter((domain) => domain.length > 0),
+    );
+    return MAILCOM_ALIAS_DOMAINS.filter((domain) => serverDomains.has(domain));
   }
 
   async defaultSenderOptions(address: string): Promise<DefaultSenderOption[]> {
-    const { options } = await this.defaultSenderDialogWithOptions(address);
+    const normalized = splitAliasAddress(address).address;
+    const alias = await this.findAlias(normalized);
+    if (!alias) throw new MailComValidationError(`Alias not found: ${normalized}`);
+
+    const displayName = alias.displayName?.trim() ?? "";
+    const options: DefaultSenderOption[] = [
+      {
+        value: "email",
+        label: alias.address,
+        sender: "email",
+        selected: alias.defaultSenderAddress === true && !displayName,
+      },
+    ];
+    if (displayName) {
+      options.push({
+        value: "name-email",
+        label: `${JSON.stringify(displayName)} <${alias.address}>`,
+        sender: "name-email",
+        selected: alias.defaultSenderAddress === true,
+      });
+    }
     return options;
   }
 
   async setDefaultAlias(address: string, options: SetDefaultAliasOptions = {}): Promise<void> {
+    const normalized = splitAliasAddress(address).address;
     const sender = options.sender ?? "email";
-    const { page, dialog, options: choices } = await this.defaultSenderDialogWithOptions(address);
-    const choice = choices.find((item) => item.sender === sender);
-    if (!choice) throw new MailComValidationError(`Default sender option not available for ${address}: ${sender}`);
+    const alias = await this.findAlias(normalized);
+    if (!alias) throw new MailComValidationError(`Alias not found: ${normalized}`);
+    if (sender === "name-email" && !alias.displayName?.trim()) {
+      throw new MailComValidationError(`Default sender option not available for ${normalized}: name-email`);
+    }
 
-    const okTarget = extractAjaxTarget(dialog, "buttonContainer_body-ok");
-    const body = new URLSearchParams();
-    body.set("defaultSenderRadioGroup:radioGroup", choice.value);
-    body.set("buttonContainer:container:buttonContainer_body:ok", "1");
-
-    const response = await this.requestText(absoluteUrl(page.url, okTarget.url), {
-      method: "POST",
-      headers: this.wicketHeaders(page.url, okTarget.component, true),
-      body,
+    const identifier = aliasIdentifier(alias);
+    const payload = minimalAlias(alias, {
+      defaultSenderAddress: true,
+      ...(sender === "email" ? { displayName: "" } : {}),
     });
-    this.page = { url: page.url, html: response };
+    await this.settingsRequest(`/emailAddresses/${identifier}?absoluteURI=false`, {
+      method: "PUT",
+      headers: {
+        Accept: "application/vnd.ui.trinity.minimalmailaddress-v3+json",
+        "Content-Type": "application/vnd.ui.trinity.minimalmailaddress-v3+json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const updated = await this.findAlias(normalized);
+    if (!updated?.defaultSenderAddress) {
+      throw new MailComValidationError(`Default sender was not updated: ${normalized}`);
+    }
   }
 
-  private async ensurePage(): Promise<AliasPageState> {
-    if (this.page) return this.page;
-    await this.login();
-    if (!this.page) throw new MailComAuthError("Could not open mail.com alias settings.");
-    return this.page;
+  private async validateAddressAvailable(address: string): Promise<void> {
+    const response = await this.settingsJson<Record<string, unknown>>(
+      "/mailaccount/emailAddressValidations?absoluteURI=false",
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/vnd.ui.trinity.email-address-validation-response+json",
+          "Content-Type": "application/vnd.ui.trinity.email-address-validation-request+json",
+        },
+        body: JSON.stringify([address]),
+      },
+    );
+    if (Object.keys(response).length > 0) {
+      throw new MailComValidationError(`Alias address is not available: ${address}`);
+    }
   }
 
-  private async pageForAttempt(attempt: number): Promise<AliasPageState> {
-    if (attempt === 0) return this.ensurePage();
-    this.page = await this.openAliasesPage();
-    return this.page;
+  private async findAlias(address: string): Promise<SettingsAlias | undefined> {
+    const normalized = address.toLowerCase();
+    return (await this.listAliases()).find((alias) => alias.address.toLowerCase() === normalized);
   }
 
-  private async defaultSenderDialogWithOptions(
-    address: string,
-  ): Promise<{ page: AliasPageState; dialog: string; options: DefaultSenderOption[] }> {
-    let lastDialog = "";
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      const page = await this.pageForAttempt(attempt);
-      const dialog = await this.openDefaultSenderDialog(page, address);
-      const options = parseDefaultSenderOptions(dialog);
-      if (options.length > 0) return { page, dialog, options };
-      lastDialog = dialog;
-      await delay(1000 * (attempt + 1));
+  private async listAliases(): Promise<SettingsAlias[]> {
+    const response = await this.settingsJson<SettingsAliasesResponse>(
+      "/mailaccount/primary/emailAddresses?absoluteURI=false&q.state.in=ACTIVE&q.type.in=MANAGED%2CDOMAIN_HOSTING",
+      {
+        headers: {
+          Accept: "application/vnd.ui.trinity.mailaddress.list-v5+json",
+          "Content-Type": "application/vnd.ui.trinity.mailaddress.list-v5+json",
+        },
+      },
+    );
+    return response.mailaddresslist ?? [];
+  }
+
+  private async waitForAlias(address: string, shouldExist: boolean): Promise<void> {
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const found = Boolean(await this.findAlias(address));
+      if (found === shouldExist) return;
+      if (attempt < 3) await delay(1000 * (attempt + 1));
     }
     throw new MailComValidationError(
-      `Default sender options were not available for ${address}.${lastDialog ? " The mail.com dialog was empty." : ""}`,
+      shouldExist ? `Alias was not created: ${address}` : `Alias was not deleted: ${address}`,
     );
   }
 
-  private async openDefaultSenderDialog(page: AliasPageState, address: string): Promise<string> {
-    const row = rowForAddress(page.html, address);
-    if (!row) throw new MailComValidationError(`Alias not found: ${address}`);
-
-    const editTarget = extractAjaxTarget(page.html, "hoverIcons-1-hoverIcon");
-    return this.requestText(
-      withQuery(absoluteUrl(page.url, editTarget.url), { rowId: row.rowId, _: String(Date.now()) }),
-      { headers: this.wicketHeaders(page.url, editTarget.component) },
-    );
+  private async ensureSettingsToken(): Promise<string> {
+    if (!this.settingsAccessToken) await this.login();
+    if (!this.settingsAccessToken) throw new MailComAuthError("Could not obtain mail.com settings access token.");
+    return this.settingsAccessToken;
   }
 
-  private async openAliasesPage(): Promise<AliasPageState> {
+  private async settingsJson<T>(path: string, init: RequestInit = {}): Promise<T> {
+    return (await this.settingsRequest(path, init)).json() as Promise<T>;
+  }
+
+  private async settingsRequest(path: string, init: RequestInit = {}): Promise<Response> {
+    const token = await this.ensureSettingsToken();
+    const headers = new Headers(init.headers);
+    headers.set("Authorization", `Bearer ${token}`);
+    headers.set("Origin", "https://mailset-root.mail.com");
+    headers.set("Referer", "https://mailset-root.mail.com/");
+    headers.set("X-UI-App", SETTINGS_UI_APP);
+    headers.set("X-Request-ID", randomUUID());
+    return this.request(new URL(path, SETTINGS_CATS_BASE_URL).href, { ...init, headers }, false);
+  }
+
+  private async openSettingsSession(): Promise<string> {
     const state = randomBytes(12).toString("hex");
     const authorizeUrl = new URL("https://oauth2.mail.com/authorize");
     authorizeUrl.search = new URLSearchParams({
@@ -265,7 +339,6 @@ export class MailComWebAliasAddon {
       headers: { Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" },
     });
     const mloginUrl = redirectLocation(authorize, authorizeUrl.href);
-
     const mlogin = await this.request(mloginUrl, {
       headers: { Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" },
     });
@@ -279,16 +352,19 @@ export class MailComWebAliasAddon {
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
         Origin: "https://mlogin.mail.com",
-        Referer: "https://mlogin.mail.com/",
+        Referer: mloginUrl,
       },
       body: loginParams,
     });
-
-    const authcode = await this.request(redirectLocation(login, "https://login.mail.com/"), {
+    const authcodeUrl = redirectLocation(login, "https://login.mail.com/");
+    const authcode = await this.request(authcodeUrl, {
       headers: { Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" },
     });
-    const code = new URL(redirectLocation(authcode, "https://oauth2.mail.com/")).searchParams.get("code");
+    const callbackUrl = redirectLocation(authcode, "https://oauth2.mail.com/");
+    const callback = new URL(callbackUrl);
+    const code = callback.searchParams.get("code");
     if (!code) throw new MailComAuthError("mail.com web OAuth did not return an authorization code.");
+    if (callback.searchParams.get("state") !== state) throw new MailComAuthError("mail.com web OAuth state mismatch.");
 
     const tokenResponse = await this.request("https://oauth2.mail.com/token", {
       method: "POST",
@@ -296,7 +372,6 @@ export class MailComWebAliasAddon {
         Authorization: this.oauthBasicAuth,
         Accept: "application/json, text/javascript, */*; q=0.01",
         "Content-Type": "application/x-www-form-urlencoded",
-        Origin: "chrome-extension://lpebgcnlaohcgdfhbffjajlnpifdkllg",
       },
       body: new URLSearchParams({
         code,
@@ -310,109 +385,71 @@ export class MailComWebAliasAddon {
 
     const oauth2Login = await this.request("https://login.mail.com/oauth2login", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        Origin: "https://dl.mail.com",
-        Referer: "https://dl.mail.com/",
-      },
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         service: "mailint",
         origin: "toolbar",
         access_token: token.access_token,
         successURL: "https://navigator-lxa.mail.com/login",
-        loginFailedURL: "http://www.mail.com/logoutlounge",
+        loginFailedURL: "http://www.mail.com/?status=nologin",
         loginErrorURL: "http://www.mail.com/?status=nologin",
         statistics: "",
         partnerdata: MAIL_SETTINGS_PARTNER_DATA,
       }),
     });
-
     const navigatorLoginUrl = new URL(redirectLocation(oauth2Login, "https://login.mail.com/"));
     await this.request(navigatorLoginUrl.href, {
       headers: { Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" },
     });
     navigatorLoginUrl.pathname = "/halogin";
     navigatorLoginUrl.searchParams.set("tz", "5.5");
-
     const halogin = await this.request(navigatorLoginUrl.href, {
       headers: { Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" },
     });
     const navigatorRootUrl = new URL(redirectLocation(halogin, navigatorLoginUrl.href));
     const sid = navigatorRootUrl.searchParams.get("sid");
     if (!sid) throw new MailComAuthError("mail.com navigator login did not return a session id.");
-
     await this.request(navigatorRootUrl.href, {
       headers: { Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" },
     });
 
-    const settingsJump = await this.request(
-      `https://navigator-lxa.mail.com/navigator/jump/to/mail_settings?sid=${encodeURIComponent(sid)}`,
+    const bridgeUrl = new URL(SETTINGS_OAUTH_BRIDGE_URL);
+    bridgeUrl.searchParams.set("sid", sid);
+    const settingsTokenResponse = await this.request(
+      bridgeUrl.href,
       {
+        method: "POST",
         headers: {
-          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          Referer: `https://navigator-lxa.mail.com/mail?sid=${encodeURIComponent(sid)}`,
+          Authorization: this.settingsOAuthBasicAuth,
+          Accept: "*/*",
+          "Content-Type": "application/x-www-form-urlencoded",
+          Origin: "https://mailset-root.mail.com",
+          Referer: "https://mailset-root.mail.com/",
         },
+        body: new URLSearchParams({
+          grant_type: SETTINGS_OAUTH_GRANT_TYPE,
+          scope: SETTINGS_OAUTH_SCOPE,
+        }),
       },
     );
-
-    const settingsEntryUrl = redirectLocation(settingsJump, "https://navigator-lxa.mail.com/");
-    const settingsEntry = await this.request(settingsEntryUrl, {
-      headers: {
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        Referer: "https://navigator-lxa.mail.com/",
-      },
-    });
-    const signatureUrl = redirectLocation(settingsEntry, settingsEntryUrl);
-    await this.request(signatureUrl, {
-      headers: {
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        Referer: "https://navigator-lxa.mail.com/",
-      },
-    });
-
-    const jsessionId = signatureUrl.match(/;jsessionid=([^?]+)/)?.[1];
-    if (!jsessionId) throw new MailComAuthError("mail.com settings did not return a Wicket session id.");
-
-    const aliasPageUrl = `https://3c-lxa.mail.com/mail/client/settings/allEmailAddresses;jsessionid=${jsessionId}`;
-    const aliasPage = await this.request(aliasPageUrl, {
-      headers: {
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        Referer: signatureUrl,
-      },
-    });
-
-    return { url: aliasPageUrl, html: await aliasPage.text() };
-  }
-
-  private wicketHeaders(referer: string, component: string | undefined, form = false): HeadersInit {
-    const headers: Record<string, string> = {
-      Accept: "application/xml, text/xml, */*; q=0.01",
-      Referer: referer,
-      "Wicket-Ajax": "true",
-      "Wicket-Ajax-BaseURL": "settings/allEmailAddresses",
-      "X-Requested-With": "XMLHttpRequest",
-    };
-    if (component) headers["Wicket-FocusedElementId"] = component;
-    if (form) {
-      headers.Origin = "https://3c-lxa.mail.com";
-      headers["Content-Type"] = "application/x-www-form-urlencoded; charset=UTF-8";
+    const settingsToken = (await settingsTokenResponse.json()) as { access_token?: string };
+    if (!settingsToken.access_token) {
+      throw new MailComAuthError("mail.com settings OAuth bridge did not return an access token.");
     }
-    return headers;
+    return settingsToken.access_token;
   }
 
-  private async requestText(url: string, init: RequestInit): Promise<string> {
-    return (await this.request(url, init)).text();
-  }
-
-  private async request(url: string, init: RequestInit = {}): Promise<Response> {
+  private async request(url: string, init: RequestInit = {}, includeCookies = true): Promise<Response> {
     const headers = new Headers(init.headers);
-    const cookie = this.cookies.header();
-    if (cookie) headers.set("Cookie", cookie);
+    if (includeCookies) {
+      const cookie = this.cookies.header();
+      if (cookie) headers.set("Cookie", cookie);
+    }
     if (!headers.has("User-Agent")) headers.set("User-Agent", this.userAgent);
     if (!headers.has("Accept-Language")) headers.set("Accept-Language", "en-US,en;q=0.9");
 
     const response = await this.fetchImpl(url, { ...init, headers, redirect: "manual" });
-    this.cookies.addFrom(response);
+    if (includeCookies) this.cookies.addFrom(response);
     if (!response.ok && !isRedirect(response.status)) {
       const body = await response.text().catch(() => undefined);
       throw new MailComApiError({
@@ -476,121 +513,29 @@ function splitAliasAddress(input: string): { localPart: string; domain: string; 
   return { localPart, domain, address: `${localPart}@${domain}` };
 }
 
-function aliasCreateForm(html: string): { localPartName: string; domainName: string } {
-  const localPartName = html.match(/<input[^>]+name="([^"]*addressSelection:localPart[^"]*)"/i)?.[1];
-  const domainName = html.match(/<select[^>]+name="([^"]*addressSelection:domainSelection[^"]*)"/i)?.[1];
-  if (!localPartName || !domainName) throw new MailComValidationError("Alias creation form was not found.");
-  return { localPartName, domainName };
-}
-
-function domainOptions(html: string): Array<{ value: string; domain: string }> {
-  const select = html.match(/<select[^>]+name="[^"]*addressSelection:domainSelection[^"]*"[\s\S]*?<\/select>/i)?.[0];
-  if (!select) throw new MailComValidationError("Alias domain selector was not found.");
-  return [...select.matchAll(/<option\b[^>]*value="([^"]+)"[^>]*>([^<]+)<\/option>/gi)].map((match) => ({
-    value: htmlDecode(match[1] ?? ""),
-    domain: htmlDecode(match[2] ?? "").trim().toLowerCase(),
-  }));
-}
-
-function uniqueDomains(domains: string[]): string[] {
-  const seen = new Set<string>();
-  const unique: string[] = [];
-  for (const domain of domains) {
-    const normalized = domain.toLowerCase();
-    if (seen.has(normalized)) continue;
-    seen.add(normalized);
-    unique.push(normalized);
+function aliasIdentifier(alias: SettingsAlias): string {
+  const href = alias._links?.self?.href;
+  if (href) {
+    const marker = "emailaddresses/";
+    const index = href.toLowerCase().indexOf(marker);
+    if (index >= 0) return href.slice(index + marker.length);
   }
-  return unique;
+  return encodeURIComponent(alias.address);
 }
 
-function extractAliasRows(html: string): AliasRow[] {
-  const rows: AliasRow[] = [];
-  const rowPattern =
-    /<div\b[^>]*class="[^"]*\btable_body-row\b[^"]*"[^>]*data-row-id="([^"]+)"[^>]*>[\s\S]*?(?=<div\b[^>]*class="[^"]*\btable_body-row\b|<div\b[^>]*class="[^"]*\bjs-template\b|<script\b|<\/ajax-response>|$)/gi;
-  for (const match of html.matchAll(rowPattern)) {
-    const rowId = match[1];
-    const block = match[0];
-    const address = htmlDecode(block.replace(/<[^>]+>/g, " ")).match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0];
-    if (!rowId || !address) continue;
-    rows.push({ rowId, address: address.toLowerCase(), defaultSender: /Default sender address/i.test(block) });
-  }
-  return rows;
-}
-
-function rowForAddress(html: string, address: string): AliasRow | undefined {
-  const normalized = address.trim().toLowerCase();
-  return extractAliasRows(html).find((row) => row.address === normalized);
-}
-
-function extractAjaxTarget(html: string, contains: string): AjaxTarget {
-  for (const match of html.matchAll(/"u":"([^"]+)"/g)) {
-    const url = htmlDecode(match[1] ?? "");
-    if (!url.includes(contains)) continue;
-    return ajaxTargetFromMatch(html, match, url);
-  }
-
-  for (const match of html.matchAll(/"u":"([^"]+)"/g)) {
-    const url = htmlDecode(match[1] ?? "");
-    const index = match.index ?? 0;
-    const window = html.slice(Math.max(0, index - 800), index + 1200);
-    if (!url.includes(contains) && !window.includes(contains)) continue;
-    return ajaxTargetFromMatch(html, match, url);
-  }
-  throw new MailComValidationError(`mail.com alias action was not found: ${contains}`);
-}
-
-function ajaxTargetFromMatch(html: string, match: RegExpMatchArray, url: string): AjaxTarget {
-  const index = match.index ?? 0;
-  const window = html.slice(Math.max(0, index - 200), index + 500);
-  const component = window.match(/"c":"([^"]+)"/)?.[1];
-  return component ? { url, component } : { url };
-}
-
-function parseDefaultSenderOptions(html: string): DefaultSenderOption[] {
-  return [...html.matchAll(/<li[\s\S]*?<\/li>/gi)]
-    .map((match) => {
-      const block = match[0];
-      const value = block.match(/name="defaultSenderRadioGroup:radioGroup"[^>]*value="([^"]+)"/i)?.[1];
-      const label = htmlDecode((block.match(/<label[^>]*>([\s\S]*?)<\/label>/i)?.[1] ?? "").replace(/<[^>]+>/g, " "))
-        .replace(/\s+/g, " ")
-        .trim();
-      if (!value || !label) return null;
-      return {
-        value,
-        label,
-        sender: label.includes("<") && label.includes(">") ? "name-email" : "email",
-        selected: /\bchecked(?:="checked")?/i.test(block),
-      } satisfies DefaultSenderOption;
-    })
-    .filter((item): item is DefaultSenderOption => Boolean(item));
-}
-
-function extractSystemMessage(html: string): string | undefined {
-  const messages: string[] = [];
-  for (const match of html.matchAll(
-    /<h4\b[^>]*class="[^"]*\bheadline\b[^"]*"[^>]*>([\s\S]*?)<\/h4>\s*<p\b[^>]*class="[^"]*\bparagraph\b[^"]*"[^>]*>([\s\S]*?)<\/p>/gi,
-  )) {
-    const headline = cleanMessage(match[1] ?? "");
-    const details = cleanMessage(match[2] ?? "");
-    const message = [headline, details].filter(Boolean).join(" ");
-    if (message && !messages.includes(message)) messages.push(message);
-  }
-  return messages[0];
-}
-
-function cleanMessage(value: string): string {
-  return htmlDecode(value.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
-}
-
-function absoluteUrl(baseUrl: string, value: string): string {
-  return new URL(value, baseUrl).href;
-}
-
-function withQuery(url: string, query: Record<string, string>): string {
-  const parsed = new URL(url);
-  for (const [key, value] of Object.entries(query)) parsed.searchParams.set(key, value);
-  return parsed.href;
+function minimalAlias(alias: SettingsAlias, patch: Partial<SettingsAlias> = {}): Record<string, unknown> {
+  const merged = { ...alias, ...patch };
+  return {
+    ...(merged.type !== undefined ? { type: merged.type } : {}),
+    ...(merged.entryDate !== undefined ? { entryDate: merged.entryDate } : {}),
+    address: merged.address,
+    ...(merged.displayName !== undefined ? { displayName: merged.displayName } : {}),
+    ...(merged.deletable !== undefined ? { deletable: merged.deletable } : {}),
+    ...(merged.pgpEnabled !== undefined ? { pgpEnabled: merged.pgpEnabled } : {}),
+    ...(merged.defaultSenderAddress !== undefined ? { defaultSenderAddress: merged.defaultSenderAddress } : {}),
+    ...(merged.defaultReceiverAddress !== undefined ? { defaultReceiverAddress: merged.defaultReceiverAddress } : {}),
+    ...(merged.state !== undefined ? { state: merged.state } : {}),
+  };
 }
 
 function htmlDecode(value: string): string {

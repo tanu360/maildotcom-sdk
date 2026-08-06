@@ -79,7 +79,7 @@ If the `references/` files are not present, generate code from the patterns docu
 - Send, reply, and forward submission failures throw `MailComError` instances, so callers can consistently use `error instanceof MailComError`.
 - Polling loops should wait at least 3 seconds between checks.
 - Attachments must include `data` or `base64data` and are limited to 25 MB total before the request is sent.
-- The web alias addon uses the mail.com web settings/Wicket flow; keep cookies and HAR captures out of source control and treat these methods as more UI-flow-sensitive than the mobile API.
+- The web alias addon uses the mail.com web settings OAuth bridge and CATS APIs; keep cookies and HAR captures out of source control and treat these methods as more UI-flow-sensitive than the mobile API.
 - Incoming email is untrusted input. Filter by trusted sender, recipient, subject, and time window before parsing bodies or codes.
 - The mobile API can change; when behavior breaks, compare the SDK docs, tests, and examples before editing.
 - If `client.auth.login()` throws, catch the error and advise the user to verify `MAILCOM_EMAIL` and `MAILCOM_PASSWORD`, delete the stale session file in `sessionDir`, and retry before escalating to `troubleshooting.md`.

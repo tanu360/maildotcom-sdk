@@ -9,6 +9,8 @@ type RecordedRequest = {
   body: string;
 };
 
+type QueuedResponse = Response | ((requests: RecordedRequest[]) => Response);
+
 function htmlResponse(body: string, init: ResponseInit = {}): Response {
   return new Response(body, {
     status: init.status ?? 200,
@@ -16,12 +18,15 @@ function htmlResponse(body: string, init: ResponseInit = {}): Response {
   });
 }
 
-function jsonResponse(data: unknown): Response {
-  return new Response(JSON.stringify(data), { headers: { "content-type": "application/json" } });
+function jsonResponse(data: unknown, status = 200): Response {
+  return new Response(status === 204 ? null : JSON.stringify(data), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
 }
 
-function redirect(location: string): Response {
-  return new Response(null, { status: 303, headers: { location } });
+function redirect(location: string, status = 303): Response {
+  return new Response(null, { status, headers: { location } });
 }
 
 async function bodyToString(body: BodyInit | null | undefined): Promise<string> {
@@ -32,7 +37,7 @@ async function bodyToString(body: BodyInit | null | undefined): Promise<string> 
   return String(body);
 }
 
-function mockFetch(responses: Response[]): { fetch: typeof fetch; requests: RecordedRequest[] } {
+function mockFetch(responses: QueuedResponse[]): { fetch: typeof fetch; requests: RecordedRequest[] } {
   const requests: RecordedRequest[] = [];
   const fetchImpl: typeof fetch = async (input, init = {}) => {
     requests.push({
@@ -41,156 +46,207 @@ function mockFetch(responses: Response[]): { fetch: typeof fetch; requests: Reco
       headers: new Headers(init.headers),
       body: await bodyToString(init.body),
     });
-    const response = responses.shift();
-    if (!response) throw new Error("No mock response queued");
-    return response;
+    const queued = responses.shift();
+    if (!queued) throw new Error("No mock response queued");
+    return typeof queued === "function" ? queued(requests) : queued;
   };
   return { fetch: fetchImpl, requests };
 }
 
-function aliasPage(includeAlias: boolean): string {
-  const rows = `
-    <div class="table_body-row table_row is-first" data-row-id="primary-row">
-      <div><strong>user@mail.com</strong> (Default sender address)</div>
-    </div>
-    ${includeAlias ? `<div class="table_body-row table_row" data-row-id="alias-row"><div>sdkalias@mail.com</div></div>` : ""}
-  `;
-  return aliasPageWithRows(rows);
+type AliasInput = {
+  address: string;
+  displayName?: string;
+  deletable?: boolean;
+  defaultSenderAddress?: boolean;
+  defaultReceiverAddress?: boolean;
+};
+
+function alias(input: AliasInput): Record<string, unknown> {
+  return {
+    type: "MANAGED",
+    entryDate: "2026-08-06T00:00:00Z",
+    address: input.address,
+    displayName: input.displayName ?? "",
+    deletable: input.deletable ?? true,
+    pgpEnabled: false,
+    defaultSenderAddress: input.defaultSenderAddress ?? false,
+    defaultReceiverAddress: input.defaultReceiverAddress ?? false,
+    state: "ACTIVE",
+    _links: { self: { href: `emailaddresses/${encodeURIComponent(input.address)}` } },
+  };
 }
 
-function aliasPageWithRows(rows: string): string {
-  return `
-    <form id="create-form">
-      <input name="fieldSet:fieldSet_body:grid:addressSelection:localPart" />
-      <select name="fieldSet:fieldSet_body:grid:addressSelection:domainSelection">
-        <option value="option-mail">mail.com</option>
-        <option value="option-other">email.com</option>
-        <option value="option-myself">myself.com</option>
-      </select>
-    </form>
-    <div class="table_body">
-      ${rows}
-    </div>
-    <div class="js-template is-hidden">${"x".repeat(2200)}</div>
-    <script>
-      Wicket.Ajax.ajax({"u":"./allEmailAddresses;jsessionid=JID?3-1.0-addresses-hoverTemplate-hoverIconPanel-hoverIcons-1-hoverIcon","c":"editBtn","e":"click"});
-      Wicket.Ajax.ajax({"u":"./allEmailAddresses;jsessionid=JID?3-1.0-addresses-hoverTemplate-hoverIconPanel-hoverIcons-2-hoverIcon","c":"deleteBtn","e":"click"});
-      Wicket.Ajax.ajax({"u":"./allEmailAddresses;jsessionid=JID?3-1.0-internalAliasChapter-internalAliasPanel-form-fieldSet-fieldSet_body-grid-button-button","m":"POST","c":"createBtn","f":"create-form","e":"click"});
-    </script>
-  `;
+function aliasesResponse(inputs: AliasInput[]): Response {
+  return jsonResponse({ mailaddresslist: inputs.map(alias) });
 }
 
-function defaultDialog(): string {
-  return `
-    <form id="default-form">
-      <ul>
-        <li>
-          <input type="radio" name="defaultSenderRadioGroup:radioGroup" value="radioEmail" checked="checked" />
-          <label>sdkalias@mail.com</label>
-        </li>
-        <li>
-          <input type="radio" name="defaultSenderRadioGroup:radioGroup" value="radioName" />
-          <label>&quot;SDK Probe&quot; &lt;sdkalias@mail.com&gt;</label>
-        </li>
-      </ul>
-      <button name="buttonContainer:container:buttonContainer_body:ok">OK</button>
-    </form>
-    <script>
-      Wicket.Ajax.ajax({"u":"./allEmailAddresses;jsessionid=JID?3-1.0-topLevelContainer-flyoutTopLevel-content-form-buttonContainer-container-buttonContainer_body-ok","m":"POST","c":"okBtn","e":"click"});
-    </script>
-  `;
+function domainsResponse(domains: string[]): Response {
+  return jsonResponse({ domains: domains.map((domain) => ({ domain, state: "ACTIVE", type: "PRIMARY" })) });
 }
 
-function deleteDialog(): string {
-  return `
-    <div class="dialog-container">Should this address be deleted?</div>
-    <script>
-      Wicket.Ajax.ajax({"u":"./allEmailAddresses;jsessionid=JID?3-1.0-topLevelContainer-dialog-root~container-container-menu-buttonContainer-primary","c":"confirmBtn","e":"click"});
-    </script>
-  `;
-}
-
-function systemMessage(headline: string, detail: string): string {
-  return `
-    <?xml version="1.0" encoding="UTF-8"?><ajax-response><component id="id52"><![CDATA[
-      <div class="system-message is-warning system-message-inline" data-webdriver="systemMessage">
-        <div class="system-message_content">
-          <h4 class="headline headline-layout4" data-webdriver="headline">${headline}</h4>
-          <p class="paragraph" data-webdriver="text">${detail}</p>
-        </div>
-      </div>
-    ]]></component></ajax-response>
-  `;
-}
-
-function webLoginResponses(page = aliasPage(false)): Response[] {
+function webLoginResponses(): QueuedResponse[] {
   return [
     redirect("https://mlogin.mail.com/oauth2/?client_id=mailcom_mailcheck_chrome&state=state&authcode-context=ctx&login_hint=user%40mail.com"),
-    htmlResponse(`<input name="service" value="oauth2" />`),
+    htmlResponse('<input name="service" value="oauth2" />'),
     redirect("https://oauth2.mail.com/authcode?authcode-context=ctx&ott=ott"),
-    redirect("https://lpebgcnlaohcgdfhbffjajlnpifdkllg.chromiumapp.org/?code=auth-code&state=state"),
+    (requests) => {
+      const authorizeRequest = requests.find((request) => request.url.startsWith("https://oauth2.mail.com/authorize"));
+      assert.ok(authorizeRequest);
+      const state = new URL(authorizeRequest.url).searchParams.get("state");
+      return redirect(`https://lpebgcnlaohcgdfhbffjajlnpifdkllg.chromiumapp.org/?code=auth-code&state=${state}`);
+    },
     jsonResponse({ access_token: "web-access" }),
     redirect("https://navigator-lxa.mail.com/login?partnerdata=data&origin=toolbar&ott=ott"),
     htmlResponse("<html>navigator login</html>"),
-    redirect("https://navigator-lxa.mail.com/?sid=nav-sid"),
+    new Response(null, {
+      status: 302,
+      headers: {
+        location: "https://navigator-lxa.mail.com/?sid=nav-sid",
+        "set-cookie": "navigator=session; Path=/; Domain=.navigator-lxa.mail.com",
+      },
+    }),
     htmlResponse("<html>navigator root</html>"),
-    redirect(
-      "https://3c-lxa.mail.com/mail/client/settings/?navsid=nav-sid&iac_appname=mail_settings&iac_token=token&ott=ott",
-    ),
-    redirect(
-      "https://3c-lxa.mail.com/mail/client/settings/signature/;jsessionid=JID?navsid=nav-sid&iac_appname=mail_settings&iac_token=token",
-    ),
-    htmlResponse("<html>signature</html>"),
-    htmlResponse(page),
+    jsonResponse({ access_token: "settings-access", scope: "webmailer_setting_r webmailer_setting_w" }),
   ];
 }
 
-test("web alias addon creates, selects default sender variants, and deletes aliases", async () => {
-  const { fetch, requests } = mockFetch([
-    ...webLoginResponses(),
-    htmlResponse(aliasPage(true)),
-    htmlResponse(defaultDialog()),
-    htmlResponse(defaultDialog()),
-    htmlResponse(aliasPage(true)),
-    htmlResponse(defaultDialog()),
-    htmlResponse(aliasPage(true)),
-    htmlResponse(deleteDialog()),
-    htmlResponse(aliasPage(false)),
-  ]);
-
-  const addon = new MailComWebAliasAddon({
+function createAddon(fetch: typeof globalThis.fetch): MailComWebAliasAddon {
+  return new MailComWebAliasAddon({
     email: "user@mail.com",
     password: "password",
     fetch,
+    settingsOAuthBasicAuth: "Basic settings-client",
+  });
+}
+
+test("web alias addon logs in through the settings OAuth bridge and lists live domains", async () => {
+  const { fetch, requests } = mockFetch([...webLoginResponses(), domainsResponse(["mail.com", "email.com", "example.org"])]);
+  const addon = createAddon(fetch);
+
+  assert.deepEqual(await addon.availableDomains(), ["email.com", "mail.com"]);
+
+  const bridge = requests.find((request) => request.url.startsWith("https://oauthbridge.navigator-lxa.mail.com/"));
+  assert.ok(bridge);
+  assert.equal(bridge.method, "POST");
+  assert.equal(bridge.headers.get("authorization"), "Basic settings-client");
+  assert.match(bridge.headers.get("cookie") ?? "", /navigator=session/);
+  assert.equal(new URLSearchParams(bridge.body).get("grant_type"), "urn:mam:oauth:grant-type:spa");
+  assert.match(new URLSearchParams(bridge.body).get("scope") ?? "", /webmailer_setting_w/);
+
+  const domains = requests.find((request) => request.url.startsWith("https://settings-cats.mail.com/domains"));
+  assert.equal(domains?.headers.get("authorization"), "Bearer settings-access");
+});
+
+test("web alias addon validates, creates, verifies, and deletes aliases through settings-cats", async () => {
+  const primary = { address: "user@mail.com", deletable: false, defaultSenderAddress: true };
+  const created = { address: "sdkalias@mail.com" };
+  const { fetch, requests } = mockFetch([
+    ...webLoginResponses(),
+    aliasesResponse([primary]),
+    domainsResponse(["mail.com", "email.com"]),
+    jsonResponse({}),
+    jsonResponse({}, 204),
+    aliasesResponse([primary, created]),
+    aliasesResponse([primary, created]),
+    jsonResponse({}, 204),
+    aliasesResponse([primary]),
+  ]);
+  const addon = createAddon(fetch);
+
+  assert.deepEqual(await addon.createAlias("sdkalias@mail.com"), { address: "sdkalias@mail.com" });
+  await addon.deleteAlias("sdkalias@mail.com");
+
+  const create = requests.find(
+    (request) => request.method === "POST" && new URL(request.url).pathname === "/mailaccount/primary/emailAddresses",
+  );
+  assert.ok(create);
+  assert.equal(create.headers.get("accept"), "application/vnd.ui.trinity.minimalmailaddress-v3+json");
+  assert.equal(create.headers.get("content-type"), "application/vnd.ui.trinity.minimalmailaddress-v3+json");
+  assert.deepEqual(JSON.parse(create.body), {
+    address: "sdkalias@mail.com",
+    deletable: true,
+    pgpEnabled: false,
+    defaultSenderAddress: false,
+    defaultReceiverAddress: false,
+    state: "ACTIVE",
   });
 
-  assert.deepEqual(await addon.availableDomains(), ["mail.com", "email.com", "myself.com"]);
-  assert.deepEqual(await addon.createAlias("sdkalias@mail.com"), { address: "sdkalias@mail.com" });
+  const deletion = requests.find((request) => request.url.includes("emailAddressesRemovals/sdkalias%40mail.com/removals"));
+  assert.ok(deletion);
+  assert.equal(deletion.method, "POST");
+  assert.equal(deletion.body, "");
+});
+
+test("web alias addon exposes and changes default sender variants through settings-cats", async () => {
+  const named = { address: "sdkalias@mail.com", displayName: "SDK Probe" };
+  const namedDefault = { ...named, defaultSenderAddress: true };
+  const emailDefault = { address: "sdkalias@mail.com", displayName: "", defaultSenderAddress: true };
+  const { fetch, requests } = mockFetch([
+    ...webLoginResponses(),
+    aliasesResponse([named]),
+    aliasesResponse([named]),
+    jsonResponse({}, 204),
+    aliasesResponse([namedDefault]),
+    aliasesResponse([namedDefault]),
+    jsonResponse({}, 204),
+    aliasesResponse([emailDefault]),
+  ]);
+  const addon = createAddon(fetch);
+
   assert.deepEqual(await addon.defaultSenderOptions("sdkalias@mail.com"), [
-    { value: "radioEmail", label: "sdkalias@mail.com", sender: "email", selected: true },
-    { value: "radioName", label: '"SDK Probe" <sdkalias@mail.com>', sender: "name-email", selected: false },
+    { value: "email", label: "sdkalias@mail.com", sender: "email", selected: false },
+    { value: "name-email", label: '"SDK Probe" <sdkalias@mail.com>', sender: "name-email", selected: false },
   ]);
   await addon.setDefaultAlias("sdkalias@mail.com", { sender: "name-email" });
   await addon.setDefaultAlias("sdkalias@mail.com", { sender: "email" });
-  await addon.deleteAlias("sdkalias@mail.com");
 
-  const createRequest = requests.find((request) =>
-    request.body.includes("fieldSet%3AfieldSet_body%3Agrid%3AaddressSelection%3AlocalPart=sdkalias"),
+  const updates = requests.filter(
+    (request) => request.method === "PUT" && request.url.includes("/emailAddresses/sdkalias%40mail.com"),
   );
-  assert.ok(createRequest);
-  assert.equal(createRequest.method, "POST");
+  assert.equal(updates.length, 2);
+  assert.equal(JSON.parse(updates[0]?.body ?? "{}").displayName, "SDK Probe");
+  assert.equal(JSON.parse(updates[1]?.body ?? "{}").displayName, "");
+  assert.equal(JSON.parse(updates[0]?.body ?? "{}").defaultSenderAddress, true);
+});
+
+test("web alias addon rejects unavailable aliases before attempting creation", async () => {
+  const { fetch, requests } = mockFetch([
+    ...webLoginResponses(),
+    aliasesResponse([{ address: "user@mail.com", deletable: false, defaultSenderAddress: true }]),
+    domainsResponse(["mail.com"]),
+    jsonResponse({ "taken@mail.com": "ALREADY_EXISTS" }),
+  ]);
+  const addon = createAddon(fetch);
+
+  await assert.rejects(() => addon.createAlias("taken@mail.com"), /Alias address is not available/);
   assert.equal(
-    createRequest.body,
-    "fieldSet%3AfieldSet_body%3Agrid%3AaddressSelection%3AlocalPart=sdkalias&fieldSet%3AfieldSet_body%3Agrid%3AaddressSelection%3AdomainSelection=option-mail&fieldSet%3AfieldSet_body%3Agrid%3Abutton%3Abutton=1",
+    requests.some(
+      (request) => request.method === "POST" && new URL(request.url).pathname === "/mailaccount/primary/emailAddresses",
+    ),
+    false,
   );
+});
 
-  const defaultPosts = requests.filter((request) => request.url.includes("buttonContainer_body-ok"));
-  assert.equal(defaultPosts.length, 2);
-  assert.match(defaultPosts[0]?.body ?? "", /defaultSenderRadioGroup%3AradioGroup=radioName/);
-  assert.match(defaultPosts[1]?.body ?? "", /defaultSenderRadioGroup%3AradioGroup=radioEmail/);
+test("web alias addon rejects non-deletable default addresses without sending removal", async () => {
+  const { fetch, requests } = mockFetch([
+    ...webLoginResponses(),
+    aliasesResponse([{ address: "user@mail.com", deletable: false, defaultSenderAddress: true }]),
+  ]);
+  const addon = createAddon(fetch);
 
-  const deleteOpen = requests.find((request) => request.url.includes("hoverIcons-2-hoverIcon"));
-  assert.ok(deleteOpen?.url.includes("rowId=alias-row"));
+  await assert.rejects(() => addon.deleteAlias("user@mail.com"), /not allowed for deletion/);
+  assert.equal(requests.some((request) => request.url.includes("emailAddressesRemovals")), false);
+});
+
+test("web alias addon surfaces settings-cats deletion conflicts", async () => {
+  const { fetch } = mockFetch([
+    ...webLoginResponses(),
+    aliasesResponse([{ address: "default@mail.com", deletable: true, defaultSenderAddress: true }]),
+    jsonResponse({ title: "Address is not allowed for deletion" }, 409),
+  ]);
+  const addon = createAddon(fetch);
+
+  await assert.rejects(() => addon.deleteAlias("default@mail.com"), /failed with 409.*not allowed for deletion/i);
 });
 
 test("web alias addon exports the known mail.com alias domain allowlist", () => {
@@ -205,11 +261,7 @@ test("web alias addon exports the known mail.com alias domain allowlist", () => 
 
 test("web alias addon rejects unsupported domains before opening webmail", async () => {
   const { fetch, requests } = mockFetch([]);
-  const addon = new MailComWebAliasAddon({
-    email: "user@mail.com",
-    password: "password",
-    fetch,
-  });
+  const addon = createAddon(fetch);
 
   await assert.rejects(
     () => addon.createAlias("sdkalias@example.org"),
@@ -218,74 +270,17 @@ test("web alias addon rejects unsupported domains before opening webmail", async
   assert.equal(requests.length, 0);
 });
 
-test("web alias addon surfaces mail.com create validation messages", async () => {
-  const { fetch } = mockFetch([
-    ...webLoginResponses(),
-    htmlResponse(
-      systemMessage(
-        "This e-mail-address (itstarun@myself.com) is not available!",
-        "Please enter a different name and try again",
-      ),
-    ),
-  ]);
-
-  const addon = new MailComWebAliasAddon({
-    email: "user@mail.com",
-    password: "password",
-    fetch,
-  });
-
-  await assert.rejects(
-    () => addon.createAlias("itstarun@myself.com"),
-    /This e-mail-address \(itstarun@myself\.com\) is not available! Please enter a different name and try again/,
-  );
-});
-
 test("web alias addon rejects create before posting when alias limit is already reached", async () => {
-  const rows = Array.from(
-    { length: 10 },
-    (_, index) =>
-      `<div class="table_body-row table_row" data-row-id="row-${index}"><div>alias${index}@mail.com ${
-        index === 0 ? "(Default sender address)" : ""
-      }</div></div>`,
-  ).join("");
-  const { fetch, requests } = mockFetch(webLoginResponses(aliasPageWithRows(rows)));
-
-  const addon = new MailComWebAliasAddon({
-    email: "user@mail.com",
-    password: "password",
-    fetch,
-  });
+  const aliases = Array.from({ length: 10 }, (_, index) => ({
+    address: `alias${index}@mail.com`,
+    defaultSenderAddress: index === 0,
+  }));
+  const { fetch, requests } = mockFetch([...webLoginResponses(), aliasesResponse(aliases)]);
+  const addon = createAddon(fetch);
 
   await assert.rejects(
     () => addon.createAlias("extra@mail.com"),
     /The maximum number of Alias Addresses has been created\. This e-mail-address could not be created/,
   );
-  assert.equal(requests.some((request) => request.body.includes("localPart=extra")), false);
-});
-
-test("web alias addon lets mail.com delete a default alias and choose the next default", async () => {
-  const before = aliasPageWithRows(`
-    <div class="table_body-row table_row" data-row-id="primary-row">
-      <div>user@mail.com (Default sender address)</div>
-    </div>
-    <div class="table_body-row table_row" data-row-id="next-row"><div>next@mail.com</div></div>
-  `);
-  const after = aliasPageWithRows(`
-    <div class="table_body-row table_row" data-row-id="next-row">
-      <div>next@mail.com (Default sender address)</div>
-    </div>
-  `);
-  const { fetch, requests } = mockFetch([...webLoginResponses(before), htmlResponse(deleteDialog()), htmlResponse(after)]);
-
-  const addon = new MailComWebAliasAddon({
-    email: "user@mail.com",
-    password: "password",
-    fetch,
-  });
-
-  await addon.deleteAlias("user@mail.com");
-
-  const deleteOpen = requests.find((request) => request.url.includes("hoverIcons-2-hoverIcon"));
-  assert.ok(deleteOpen?.url.includes("rowId=primary-row"));
+  assert.equal(requests.some((request) => request.url.startsWith("https://settings-cats.mail.com/domains")), false);
 });

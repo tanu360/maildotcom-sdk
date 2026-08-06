@@ -2,6 +2,32 @@
 
 All notable changes to this package are documented here.
 
+## 1.0.9 - 2026-08-07
+
+- Migrated the web alias addon from the retired Wicket settings page to mail.com's current settings OAuth bridge and CATS APIs.
+- Added live-domain discovery by intersecting mail.com's active-domain response with the exported `MAILCOM_ALIAS_DOMAINS` allowlist.
+- Reworked alias creation and removal around the current REST resources, including availability checks, mutation verification, and non-deletable primary-address protection.
+- Reworked default-sender selection around the current REST resource and preserved the `email` and `name-email` sender variants.
+
+## 1.0.8 - 2026-06-27
+
+- Added the optional `maildotcom-sdk/web-aliases` addon for web-only alias creation, deletion, and default-sender selection.
+- Added `availableDomains()` and exported `MAILCOM_ALIAS_DOMAINS` for validating supported mail.com alias domains.
+- Added the web alias example, API documentation, agent-skill guidance, and mocked coverage for the addon.
+
+## 1.0.7 - 2026-06-03
+
+- Bound cached sessions to normalized account emails so credentials cannot accidentally reuse another mailbox's token cache.
+- Replaced email-derived session filenames with collision-resistant account hashes and restricted session directories/files to private permissions.
+- Sanitized attachment filenames from service metadata to remove path components, null bytes, and unsafe special names.
+- Updated documentation and examples to match the supported request parameters and SDK behavior.
+
+## 1.0.6 - 2026-06-01
+
+- Quoted and escaped default-sender display names containing RFC 5322 special characters before message submission.
+- Ignored RFC 2483 comment lines when parsing `text/uri-list` folder responses.
+- Expanded npm keywords for mail.com API and SDK discoverability.
+
 ## 1.0.5 - 2026-05-29
 
 - Throw `MailComError` for mail.com submission error events and missing success events so send/reply/forward failures stay within the SDK error family.

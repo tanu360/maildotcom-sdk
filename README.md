@@ -146,7 +146,7 @@ Use `NO_SPAM_EXCLUDED_FOLDERS`, `mail.listAll()`, `mail.findBySubject()`, and `m
 
 ### Web Alias Addon
 
-Alias listing and display name updates use the mobile API on `MailComClient`. Creating aliases, deleting aliases, and choosing the default sender variant require the webmail settings flow, so they live in a separate addon module.
+Alias listing and display name updates use the mobile API on `MailComClient`. Creating aliases, deleting aliases, and choosing the default sender variant require the web settings OAuth/CATS flow, so they live in a separate addon module.
 
 ```ts
 import { MAILCOM_ALIAS_DOMAINS, MailComWebAliasAddon } from "maildotcom-sdk/web-aliases";
@@ -163,7 +163,7 @@ await aliases.setDefaultAlias("my-alias@mail.com", { sender: "name-email" });
 await aliases.deleteAlias("my-alias@mail.com");
 ```
 
-`createAlias()` rejects domains outside `MAILCOM_ALIAS_DOMAINS` before opening the webmail flow.
+`createAlias()` rejects domains outside `MAILCOM_ALIAS_DOMAINS` before login. `availableDomains()` intersects that known allowlist with mail.com's current active-domain response.
 
 ---
 

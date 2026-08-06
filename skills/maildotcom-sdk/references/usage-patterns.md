@@ -94,7 +94,7 @@ await webAliases.setDefaultAlias("my-alias@mail.com", { sender: "name-email" });
 await webAliases.deleteAlias("my-alias@mail.com");
 ```
 
-Use `client.account.aliases()` to verify alias state and `client.account.updateAliasDisplayName()` before selecting `name-email` when the alias needs a display name. `MAILCOM_ALIAS_DOMAINS` is the static known domain allowlist; `createAlias()` rejects domains outside it before opening webmail. Deleting a default alias follows mail.com's webmail behavior: mail.com selects another alias as the default.
+Use `client.account.aliases()` to verify alias state and `client.account.updateAliasDisplayName()` before selecting `name-email` when the alias needs a display name. `MAILCOM_ALIAS_DOMAINS` is the static known domain allowlist; `createAlias()` rejects domains outside it before login, while `availableDomains()` returns the subset currently advertised by mail.com. The addon uses mail.com's web settings OAuth bridge and CATS APIs. Non-deletable primary addresses are rejected before removal; deletable default aliases follow mail.com's server behavior.
 
 ## Send With Attachment
 
