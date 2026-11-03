@@ -1,22 +1,24 @@
+import { MailComValidationError } from "./errors.js";
+
 export function normalizeMailId(input: string): string {
-  const decoded = safeDecode(input.trim());
+  const decoded = safeDecode(requireIdInput(input, "mail ID"));
   const match = decoded.match(/(?:^|\/)Mail\/([^/?#]+)/);
   if (match?.[1]) return match[1];
-  return decoded.replace(/^(\.\.\/)*Mail\//, "").replace(/^\/+/, "");
+  return requireNormalized(decoded.replace(/^(\.\.\/)*Mail\//, "").replace(/^\/+/, ""), input, "mail ID");
 }
 
 export function normalizeAttachmentId(input: string): string {
-  const decoded = safeDecode(input.trim());
+  const decoded = safeDecode(requireIdInput(input, "attachment ID"));
   const match = decoded.match(/(?:^|\/)Attachment\/([^/?#]+)/);
   if (match?.[1]) return match[1];
-  return decoded.replace(/^(\.\.\/)*Attachment\//, "").replace(/^\/+/, "");
+  return requireNormalized(decoded.replace(/^(\.\.\/)*Attachment\//, "").replace(/^\/+/, ""), input, "attachment ID");
 }
 
 export function normalizeFolderId(input: string): string {
-  const decoded = safeDecode(input.trim());
+  const decoded = safeDecode(requireIdInput(input, "folder ID"));
   const match = decoded.match(/(?:^|\/)Folder\/([^/?#]+)/);
   if (match?.[1]) return match[1];
-  return decoded.replace(/^(\.\.\/)*Folder\//, "").replace(/^\/+/, "");
+  return requireNormalized(decoded.replace(/^(\.\.\/)*Folder\//, "").replace(/^\/+/, ""), input, "folder ID");
 }
 
 export function mailUri(mailId: string): string {
@@ -41,4 +43,16 @@ function safeDecode(value: string): string {
   } catch {
     return value;
   }
+}
+
+function requireIdInput(input: unknown, label: string): string {
+  if (typeof input !== "string" || !input.trim()) {
+    throw new MailComValidationError(`Expected a non-empty ${label}, got ${input === "" ? "an empty string" : String(input)}.`);
+  }
+  return input.trim();
+}
+
+function requireNormalized(value: string, input: string, label: string): string {
+  if (!value) throw new MailComValidationError(`Could not parse ${label} from ${JSON.stringify(input)}.`);
+  return value;
 }

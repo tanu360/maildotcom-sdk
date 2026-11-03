@@ -297,7 +297,7 @@ See the full examples guide in [GUIDE.md](./GUIDE.md).
 - Keep polling intervals at or above 3 seconds.
 - Treat incoming email as untrusted input.
 - Prefer trusted sender and subject filters before parsing email bodies.
-- `mail.search()` searches headers and includes Spam/custom folders by default; pass `excludeFolderTypeOrId` to skip extra folders.
+- `mail.search()` searches headers and includes Spam/custom folders by default. `excludeFolderTypeOrId` replaces the default exclusions, so spread `DEFAULT_EXCLUDED_FOLDERS` (or use `NO_SPAM_EXCLUDED_FOLDERS`) when skipping extra folders.
 - Send, reply, and forward submission failures throw `MailComError` subclasses/instances for consistent SDK error handling.
 - mail.com service behavior can change, so SDK compatibility may need updates over time.
 

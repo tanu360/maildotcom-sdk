@@ -2,6 +2,30 @@
 
 All notable changes to this package are documented here.
 
+## 2.0.0 - 2026-11-03
+
+### Changed (may affect callers)
+
+- `client.auth.login()` now rethrows network and unexpected errors from a cached refresh instead of deleting the stored session. Only a refresh token that mail.com rejects is cleared.
+- Mail, folder, and attachment IDs are validated before any request. Missing, empty, or unparseable IDs, and empty ID lists for actions and previews, now throw `MailComValidationError`. Before, they threw a raw `TypeError` or sent a request that mail.com rejected with a 400.
+- `MailComWebAliasAddon` API errors redact URL query strings in `message` and `url`, so navigator session IDs and OAuth state no longer leak into logs.
+
+### Fixed
+
+- Authorized requests that hit a 401 with a revoked or expired refresh token now fall back to password login (when a password is configured) and retry once, instead of failing until the process restarts.
+- A wrong password now throws `MailComAuthError("mail.com login failed. Check the account email and password.")` in both the mobile client and the web alias addon. Before, it threw a misleading "Location header" or "Expected mail.com redirect" error.
+- Login attempts that mail.com rate-limits (HTTP 403 "blocked" or 429) now say so, instead of reporting a missing redirect.
+- `FileSessionStore` writes sessions through a temp file and rename, and treats a corrupt session file as missing so login can recover.
+- The web alias addon opens a fresh settings session once and retries when the settings token expires (401). Concurrent addon calls now share one login.
+- Web login form parsing decodes HTML entities exactly once, supports numeric entities, and no longer matches `data-name` or `data-value` attributes.
+
+### Docs and agent skill
+
+- Documented that `excludeFolderTypeOrId` replaces `DEFAULT_EXCLUDED_FOLDERS` rather than extending it.
+- Documented that `mail.reply()` needs `to` or `originalMail`, and that list and search results expose IDs through `attribute.mailIdentifier`.
+- Corrected the draft-resolution note in the API cheatsheet, which now resolves through the `Location` header.
+- Expanded troubleshooting for credential errors, login rate limits, session recovery, and npm publishing metadata.
+
 ## 1.0.9 - 2026-08-07
 
 - Migrated the web alias addon from the retired Wicket settings page to mail.com's current settings OAuth bridge and CATS APIs.

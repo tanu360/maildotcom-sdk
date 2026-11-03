@@ -72,6 +72,8 @@ await client.mail.getBody(mailId, {
 - `listAll()` is an alias for `listIncoming()`.
 - `syncFolder(folderId, { after })` returns URI-list style deltas.
 - `getPreview(mailIdOrIds)` returns parsed SSE JSON preview data.
+- `excludeFolderTypeOrId` replaces `DEFAULT_EXCLUDED_FOLDERS`; spread the defaults when adding folders: `[...DEFAULT_EXCLUDED_FOLDERS, folderId]`.
+- List/search results have no top-level `id`. Read message IDs from `message.attribute?.mailIdentifier` (or normalize `message.mailURI`).
 
 ## Sending Options
 
@@ -104,7 +106,7 @@ await client.drafts.update(draftId, { from, to, subject, htmlBody });
 await client.drafts.delete(draftIdOrIds);
 ```
 
-Draft create/update may receive an empty 201 from mail.com; the SDK resolves this by reading the draft list and matching the created draft.
+Draft create/update may receive an empty 201 from mail.com; the SDK resolves the draft ID from the `Location` header and throws if it is missing.
 
 ## Attachments
 

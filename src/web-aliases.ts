@@ -116,6 +116,7 @@ export class MailComWebAliasAddon {
   private readonly userAgent: string;
   private readonly cookies = new CookieJar();
   private settingsAccessToken: string | null = null;
+  private loginInFlight: Promise<void> | null = null;
 
   constructor(options: MailComWebAliasAddonOptions) {
     this.email = options.email;
@@ -127,7 +128,16 @@ export class MailComWebAliasAddon {
   }
 
   async login(): Promise<void> {
-    this.settingsAccessToken = await this.openSettingsSession();
+    if (!this.loginInFlight) {
+      this.loginInFlight = this.openSettingsSession()
+        .then((token) => {
+          this.settingsAccessToken = token;
+        })
+        .finally(() => {
+          this.loginInFlight = null;
+        });
+    }
+    return this.loginInFlight;
   }
 
   async createAlias(input: string | CreateWebAliasInput): Promise<WebAliasMutationResult> {
@@ -312,6 +322,17 @@ export class MailComWebAliasAddon {
   }
 
   private async settingsRequest(path: string, init: RequestInit = {}): Promise<Response> {
+    try {
+      return await this.settingsRequestOnce(path, init);
+    } catch (error) {
+      if (!(error instanceof MailComApiError) || error.status !== 401) throw error;
+      // The settings token is short-lived; open a fresh settings session once and retry.
+      this.settingsAccessToken = null;
+      return this.settingsRequestOnce(path, init);
+    }
+  }
+
+  private async settingsRequestOnce(path: string, init: RequestInit = {}): Promise<Response> {
     const token = await this.ensureSettingsToken();
     const headers = new Headers(init.headers);
     headers.set("Authorization", `Bearer ${token}`);
@@ -357,6 +378,9 @@ export class MailComWebAliasAddon {
       body: loginParams,
     });
     const authcodeUrl = redirectLocation(login, "https://login.mail.com/");
+    if (/[?&]status=login[-_]failed\b|loginerror/i.test(authcodeUrl)) {
+      throw new MailComAuthError("mail.com login failed. Check the account email and password.");
+    }
     const authcode = await this.request(authcodeUrl, {
       headers: { Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" },
     });
@@ -452,11 +476,13 @@ export class MailComWebAliasAddon {
     if (includeCookies) this.cookies.addFrom(response);
     if (!response.ok && !isRedirect(response.status)) {
       const body = await response.text().catch(() => undefined);
+      // Login and bridge URLs carry session ids and OAuth state in the query string.
+      const safeUrl = redactUrl(url);
       throw new MailComApiError({
-        message: `${init.method ?? "GET"} ${url} failed with ${response.status}${body ? `: ${truncate(body)}` : ""}`,
+        message: `${init.method ?? "GET"} ${safeUrl} failed with ${response.status}${body ? `: ${truncate(body)}` : ""}`,
         status: response.status,
         method: init.method ?? "GET",
-        url,
+        url: safeUrl,
         ...(body !== undefined ? { body } : {}),
       });
     }
@@ -468,9 +494,9 @@ function loginFormParams(html: string, pageUrl: string): URLSearchParams {
   const params = new URLSearchParams();
   for (const input of html.matchAll(/<input\b[^>]*>/gi)) {
     const tag = input[0];
-    const name = tag.match(/\bname=(["'])(.*?)\1/i)?.[2];
+    const name = tag.match(/\sname=(["'])(.*?)\1/i)?.[2];
     if (!name) continue;
-    params.set(name, htmlDecode(tag.match(/\bvalue=(["'])(.*?)\1/i)?.[2] ?? ""));
+    params.set(htmlDecode(name), htmlDecode(tag.match(/\svalue=(["'])(.*?)\1/i)?.[2] ?? ""));
   }
 
   if (!params.has("service")) params.set("service", "oauth2");
@@ -539,12 +565,31 @@ function minimalAlias(alias: SettingsAlias, patch: Partial<SettingsAlias> = {}):
 }
 
 function htmlDecode(value: string): string {
-  return value
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#x27;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">");
+  return value.replace(/&(#x[0-9a-f]+|#[0-9]+|amp|quot|apos|lt|gt);/gi, (entity, code: string) => {
+    const lower = code.toLowerCase();
+    if (lower.startsWith("#x")) return safeFromCodePoint(Number.parseInt(lower.slice(2), 16), entity);
+    if (lower.startsWith("#")) return safeFromCodePoint(Number.parseInt(lower.slice(1), 10), entity);
+    return { amp: "&", quot: '"', apos: "'", lt: "<", gt: ">" }[lower] ?? entity;
+  });
+}
+
+function safeFromCodePoint(codePoint: number, fallback: string): string {
+  try {
+    return String.fromCodePoint(codePoint);
+  } catch {
+    return fallback;
+  }
+}
+
+function redactUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (!parsed.search) return url;
+    parsed.search = "?[redacted]";
+    return parsed.href;
+  } catch {
+    return url.split("?")[0] ?? url;
+  }
 }
 
 function truncate(value: string, length = 300): string {

@@ -90,7 +90,7 @@ function webLoginResponses(): QueuedResponse[] {
     htmlResponse('<input name="service" value="oauth2" />'),
     redirect("https://oauth2.mail.com/authcode?authcode-context=ctx&ott=ott"),
     (requests) => {
-      const authorizeRequest = requests.find((request) => request.url.startsWith("https://oauth2.mail.com/authorize"));
+      const authorizeRequest = [...requests].reverse().find((request) => request.url.startsWith("https://oauth2.mail.com/authorize"));
       assert.ok(authorizeRequest);
       const state = new URL(authorizeRequest.url).searchParams.get("state");
       return redirect(`https://lpebgcnlaohcgdfhbffjajlnpifdkllg.chromiumapp.org/?code=auth-code&state=${state}`);
@@ -283,4 +283,43 @@ test("web alias addon rejects create before posting when alias limit is already 
     /The maximum number of Alias Addresses has been created\. This e-mail-address could not be created/,
   );
   assert.equal(requests.some((request) => request.url.startsWith("https://settings-cats.mail.com/domains")), false);
+});
+
+test("web alias addon opens a fresh settings session once when the settings token expires", async () => {
+  const { fetch, requests } = mockFetch([
+    ...webLoginResponses(),
+    jsonResponse({ error: "expired" }, 401),
+    ...webLoginResponses(),
+    domainsResponse(["mail.com"]),
+  ]);
+  const addon = createAddon(fetch);
+
+  assert.deepEqual(await addon.availableDomains(), ["mail.com"]);
+  const domainCalls = requests.filter((request) => request.url.startsWith("https://settings-cats.mail.com/domains"));
+  assert.equal(domainCalls.length, 2);
+});
+
+test("web alias addon reports wrong credentials and redacts session ids from API errors", async () => {
+  const failedLogin = webLoginResponses().slice(0, 2);
+  failedLogin.push(redirect("https://mlogin.mail.com/oauth2/?status=login-failed&login_hint=user%40mail.com&authcode-context=ctx"));
+  await assert.rejects(createAddon(mockFetch(failedLogin).fetch).login(), /login failed.*email and password/i);
+
+  const bridgeFailure = webLoginResponses().slice(0, -1);
+  bridgeFailure.push(jsonResponse({ error: "bad" }, 400));
+  await assert.rejects(createAddon(mockFetch(bridgeFailure).fetch).login(), (error: unknown) => {
+    assert.ok(error instanceof Error);
+    assert.doesNotMatch(error.message, /nav-sid/);
+    assert.match(error.message, /\[redacted\]/);
+    return true;
+  });
+});
+
+test("web alias addon decodes login form entities exactly once", async () => {
+  const responses = webLoginResponses();
+  responses[1] = htmlResponse('<input data-name="x" name="service" value="oauth2" /><input name="token" value="a&amp;quot;b&#x3D;c&#39;" />');
+  const { fetch, requests } = mockFetch([...responses, domainsResponse(["mail.com"])]);
+  await createAddon(fetch).availableDomains();
+
+  const login = requests.find((request) => request.url === "https://login.mail.com/login");
+  assert.equal(new URLSearchParams(login?.body ?? "").get("token"), "a&quot;b=c'");
 });

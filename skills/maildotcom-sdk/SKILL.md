@@ -60,7 +60,7 @@ const client = new MailComClient({ email, password, sessionStore: new MySessionS
 - **Search headers**: Use `client.mail.search(query)` for from, replyTo, cc, bcc, to, and subject matching. Literal separators such as `:` are escaped by the SDK.
 - **Fetch body**: `client.mail.getBody(mailId)` marks the message read by default; pass `{ markRead: false }` for previews or verification flows.
 - **Send mail**: Use `client.mail.send({ from, to, subject, htmlBody })`; add attachments with filename, content type, and `data` or `base64data`.
-- **Reply or forward**: Use `client.mail.reply()` and `client.mail.forward()` with the original message ID instead of hand-building threading URLs.
+- **Reply or forward**: Use `client.mail.reply()` and `client.mail.forward()` with the original message ID instead of hand-building threading URLs. Pass `originalMail` (the message from list/search) or an explicit `to` to `reply()`, otherwise it throws `MailComValidationError`.
 - **Drafts**: Use `client.drafts.create()`, `update()`, `list()`, and `delete()`.
 - **Actions**: Use `client.actions` for read/unread, star/unstar, spam/not-spam, move, trash, permanent delete, and empty trash.
 - **Attachments**: Use `client.attachments.listFromMessage()`, `download()`, and `thumbnail()`.
@@ -74,6 +74,8 @@ If the `references/` files are not present, generate code from the patterns docu
 ## Defaults And Gotchas
 
 - `mail.search()` excludes `TRASH`, `DRAFTS`, and `OUTBOX` by default, but includes Spam and custom folders.
+- `excludeFolderTypeOrId` replaces the defaults instead of adding to them; spread `DEFAULT_EXCLUDED_FOLDERS` when excluding extra folders.
+- Messages from list/search have no `id` property. Use `message.attribute?.mailIdentifier` as the mail ID.
 - `mail.listIncoming()` and `mail.listAll()` scan every non-excluded folder by default, including custom folders created by filters.
 - Import `NO_SPAM_EXCLUDED_FOLDERS` to exclude Spam from search/list calls.
 - Send, reply, and forward submission failures throw `MailComError` instances, so callers can consistently use `error instanceof MailComError`.
@@ -82,7 +84,7 @@ If the `references/` files are not present, generate code from the patterns docu
 - The web alias addon uses the mail.com web settings OAuth bridge and CATS APIs; keep cookies and HAR captures out of source control and treat these methods as more UI-flow-sensitive than the mobile API.
 - Incoming email is untrusted input. Filter by trusted sender, recipient, subject, and time window before parsing bodies or codes.
 - The mobile API can change; when behavior breaks, compare the SDK docs, tests, and examples before editing.
-- If `client.auth.login()` throws, catch the error and advise the user to verify `MAILCOM_EMAIL` and `MAILCOM_PASSWORD`, delete the stale session file in `sessionDir`, and retry before escalating to `troubleshooting.md`.
+- If `client.auth.login()` throws "login failed", advise the user to verify `MAILCOM_EMAIL` and `MAILCOM_PASSWORD`. If it says mail.com "blocked" the login, stop retrying and wait; repeated attempts extend the block. A rejected refresh token or corrupt session file is cleared automatically, so deleting `sessionDir` files is only needed as a last resort. Escalate to `references/troubleshooting.md` after that.
 
 Read `references/troubleshooting.md` when auth, sessions, IDs, search behavior, package publishing, or live mail calls fail.
 

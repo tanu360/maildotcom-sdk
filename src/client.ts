@@ -161,7 +161,7 @@ export class MailComClient {
     this.http = new MailComHttpClient(
       this.fetchImpl,
       () => this.session?.accessToken,
-      () => this.refreshWithLock().then(() => undefined),
+      () => this.recoverAfterUnauthorized(),
     );
 
     this.auth = {
@@ -246,7 +246,9 @@ export class MailComClient {
       this.session = cached;
       try {
         return await this.refresh(cached.refreshToken);
-      } catch {
+      } catch (error) {
+        // Keep the stored session on network or unexpected failures; only a rejected refresh token is stale.
+        if (!(error instanceof MailComAuthError)) throw error;
         await this.sessionStore.delete(this.email);
         this.session = null;
       }
@@ -513,8 +515,8 @@ export class MailComClient {
   }
 
   private async getBody(mailId: string, options: { format?: "html" | "text"; markRead?: boolean } = {}): Promise<string> {
-    await this.ensureLoggedIn();
     const normalizedMailId = normalizeMailId(mailId);
+    await this.ensureLoggedIn();
     const body = await this.http.request<string>(
       `${this.mailboxBase()}/Mail/${encodeURIComponent(normalizedMailId)}/Body?absoluteURI=false`,
       {
@@ -528,9 +530,10 @@ export class MailComClient {
   }
 
   private async getPreview(mailIds: string | string[]): Promise<MailPreview[]> {
+    const ids = this.mailIdList(mailIds);
     await this.ensureLoggedIn();
     const form = new URLSearchParams();
-    for (const mailId of this.arrayOf(mailIds)) form.append("mailIdentifier", normalizeMailId(mailId));
+    for (const mailId of ids) form.append("mailIdentifier", mailId);
 
     const sse = await this.http.request<string>(`${this.mailboxBase()}/Mail/bodypreviews`, {
       method: "POST",
@@ -634,6 +637,7 @@ export class MailComClient {
   }
 
   private async batchUpdate(mailIds: string | string[], patch: JsonObject): Promise<BatchUpdateResult> {
+    const ids = this.mailIdList(mailIds);
     await this.ensureLoggedIn();
     return this.http.request<BatchUpdateResult>(`${this.mailboxBase()}/MailBatchUpdate`, {
       method: "POST",
@@ -644,7 +648,7 @@ export class MailComClient {
       },
       json: {
         ...patch,
-        mailURIs: this.arrayOf(mailIds).map(mailUri),
+        mailURIs: ids.map(mailUri),
       },
     });
   }
@@ -670,9 +674,10 @@ export class MailComClient {
   }
 
   private async deletePermanent(mailIds: string | string[]): Promise<void> {
+    const ids = this.mailIdList(mailIds);
     await this.ensureLoggedIn();
     const form = new URLSearchParams();
-    for (const id of this.arrayOf(mailIds)) form.append("mailURI", mailUri(id));
+    for (const id of ids) form.append("mailURI", mailUri(id));
     form.set("moveToTrash", "false");
 
     await this.http.request<void>(`${this.mailboxBase()}/MailBatchDelete`, {
@@ -857,6 +862,17 @@ export class MailComClient {
     return folders.flatMap((folder) => [folder, ...this.flattenFolders(folder.folders ?? [])]);
   }
 
+  private async recoverAfterUnauthorized(): Promise<void> {
+    try {
+      await this.refreshWithLock();
+    } catch (error) {
+      if (!(error instanceof MailComAuthError) || !this.password) throw error;
+      this.session = null;
+      await this.sessionStore.delete(this.email);
+      await this.loginWithLock();
+    }
+  }
+
   private async ensureLoggedIn(): Promise<void> {
     if (this.session?.accessToken) return;
     await this.loginWithLock();
@@ -909,7 +925,7 @@ export class MailComClient {
     }).toString();
 
     const authorize = await this.webviewRequest(authorizeUrl, cookies);
-    const loginAppUrl = this.requiredLocation(authorize, "authorize redirect");
+    const loginAppUrl = await this.requiredLocation(authorize, "authorize redirect");
     const authcodeContext = new URL(loginAppUrl).searchParams.get("authcode-context");
     if (!authcodeContext) throw new MailComAuthError("Android OAuth login did not return authcode-context.");
 
@@ -941,9 +957,12 @@ export class MailComClient {
       body: loginForm,
     });
 
-    const authcodeUrl = this.requiredLocation(login, "login redirect");
+    const authcodeUrl = await this.requiredLocation(login, "login redirect");
+    if (isLoginFailureRedirect(authcodeUrl)) {
+      throw new MailComAuthError("mail.com login failed. Check the account email and password.");
+    }
     const authcode = await this.webviewRequest(authcodeUrl, cookies);
-    const appRedirect = this.requiredLocation(authcode, "authcode redirect");
+    const appRedirect = await this.requiredLocation(authcode, "authcode redirect");
     const redirectUrl = new URL(appRedirect);
     const code = redirectUrl.searchParams.get("code");
     const returnedState = redirectUrl.searchParams.get("state");
@@ -990,10 +1009,18 @@ export class MailComClient {
     return response;
   }
 
-  private requiredLocation(response: Response, label: string): string {
+  private async requiredLocation(response: Response, label: string): Promise<string> {
     const location = response.headers.get("location");
-    if (!location) throw new MailComAuthError(`Android OAuth ${label} did not include Location header.`);
-    return location;
+    if (location) return location;
+    if (response.status === 403 || response.status === 429) {
+      throw new MailComAuthError(
+        `mail.com blocked the login (HTTP ${response.status} at ${label}), usually after repeated failed logins. Wait before retrying.`,
+      );
+    }
+    const body = (await response.text().catch(() => "")).replace(/\s+/g, " ").trim().slice(0, 200);
+    throw new MailComAuthError(
+      `Android OAuth ${label} did not include Location header (HTTP ${response.status}${body ? `: ${body}` : ""}).`,
+    );
   }
 
   private async oauthToken(formInput: Record<string, string>, authorization = this.currentTokenBasicAuth): Promise<OAuthTokenResponse> {
@@ -1061,6 +1088,12 @@ export class MailComClient {
     return `${HSP2_BASE_URL}/msgsrv/Mailbox/primaryMailbox`;
   }
 
+  private mailIdList(mailIds: string | string[]): string[] {
+    const ids = Array.isArray(mailIds) ? mailIds : [mailIds];
+    if (ids.length === 0) throw new MailComValidationError("At least one mail ID is required.");
+    return ids.map(normalizeMailId);
+  }
+
   private arrayOf(value: AddressList | undefined): string[] {
     if (value === undefined) return [];
     return Array.isArray(value) ? value : [value];
@@ -1112,6 +1145,10 @@ function formatDisplayName(name: string): string {
     return `"${name.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
   }
   return name;
+}
+
+function isLoginFailureRedirect(location: string): boolean {
+  return /[?&]status=login[-_]failed\b|\/login\/error\b|loginerror/i.test(location);
 }
 
 function replySubject(subject: string | undefined): string {

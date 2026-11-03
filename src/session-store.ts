@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { chmod, mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { SessionStore, TokenSession } from "./types.js";
 
@@ -32,8 +32,16 @@ export class FileSessionStore implements SessionStore {
     await chmod(this.directory, 0o700);
     const boundSession = bindSessionToEmail(email, session);
     const sessionPath = this.pathFor(email, boundSession);
-    await writeFile(sessionPath, `${JSON.stringify(boundSession, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-    await chmod(sessionPath, 0o600);
+    // Write to a temp file and rename so a crash mid-write never leaves a truncated session file.
+    const tempPath = `${sessionPath}.${process.pid}.${Date.now()}.tmp`;
+    try {
+      await writeFile(tempPath, `${JSON.stringify(boundSession, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+      await chmod(tempPath, 0o600);
+      await rename(tempPath, sessionPath);
+    } catch (error) {
+      await unlinkIfExists(tempPath);
+      throw error;
+    }
     await this.deleteMatching(email, sessionPath);
   }
 
@@ -92,9 +100,22 @@ export class FileSessionStore implements SessionStore {
     return `acct-${digest}`;
   }
 
-  private async readSession(path: string): Promise<TokenSession> {
-    const text = await readFile(path, "utf8");
-    return JSON.parse(text) as TokenSession;
+  private async readSession(path: string): Promise<TokenSession | null> {
+    let text: string;
+    try {
+      text = await readFile(path, "utf8");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
+    }
+    try {
+      const parsed = JSON.parse(text) as unknown;
+      return parsed && typeof parsed === "object" ? (parsed as TokenSession) : null;
+    } catch {
+      // A corrupt session file is treated as missing so login can recover with the password.
+      await unlinkIfExists(path);
+      return null;
+    }
   }
 }
 

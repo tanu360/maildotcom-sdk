@@ -260,7 +260,7 @@ await client.mail.search("sender@example.com", {
 });
 ```
 
-`mail.listIncoming()` and `mail.listAll()` scan messages in all folders except `TRASH`, `DRAFTS`, and `OUTBOX` by default, so custom filtered folders are included. To skip extra folders, pass `excludeFolderTypeOrId`.
+`mail.listIncoming()` and `mail.listAll()` scan messages in all folders except `TRASH`, `DRAFTS`, and `OUTBOX` by default, so custom filtered folders are included. To skip extra folders, pass `excludeFolderTypeOrId`. It replaces the default exclusions rather than adding to them, so keep the defaults explicitly: `excludeFolderTypeOrId: [...DEFAULT_EXCLUDED_FOLDERS, "1234567890"]`.
 
 The SDK exports typed folder exclusion presets:
 
